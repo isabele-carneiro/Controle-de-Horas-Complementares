@@ -1,0 +1,8 @@
+RF-01 (Submissão pelo Discente): O sistema deve permitir que o discente submeta pedidos de AC vinculados a uma dimensão e tipo específicos, anexando a ligação do comprovativo.
+CA-01 (Sucesso na Submissão): Dado que o discente preencheu a dimensão, o tipo, o título, a CH solicitada e uma ligação válida para o comprovativo, quando clica em "Submeter", então o sistema grava a solicitação com o estado "Pendente" e atribui a data atual.
+CA-02 (Validação de Carga Horária): Dado que o discente introduz um valor de CH solicitada menor ou igual a zero, quando tenta submeter a solicitação, então o sistema bloqueia o envio e destaca a incorreção do campo.
+RF-02 (Avaliação e Controlo de Teto de CH): O sistema deve permitir ao avaliador registar a CH aprovada e aplicar os limites máximos permitidos por atividade e por dimensão.
+CA-03 (Aplicação de Teto Automático): Dado que o tipo de atividade possui uma CH máxima de 20 horas e o discente solicitou 30 horas, quando o avaliador aprova o pedido, então o sistema ajusta a CH aprovada para o teto de 20 horas e marca o campo "CH máxima atingida na atividade?" como "Sim".
+CA-04 (Obrigatoriedade de Justificativa): Dado que o avaliador atribui 0 horas à CH aprovada (indeferimento), quando tenta guardar a avaliação sem preencher o campo "Justificativa", então o sistema impede a gravação até que o motivo seja detalhado.
+RF-03 (Acompanhamento e Registo Administrativo): O sistema deve permitir ao técnico administrativo acompanhar a conclusão do processo.
+CA-05 (Confirmação de Registo): Dado que o processo foi avaliado, quando o técnico confirma a inserção no sistema académico oficial, então marca o campo "Registado no SIGA?" como "Sim" e encerra o fluxo da solicitação.
