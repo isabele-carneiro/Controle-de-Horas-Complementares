@@ -17,7 +17,7 @@
 
 | Tarefa | Assistente de IA Utilizado | Conteúdo Gerado pela IA | Revisão / Correção Humana Realizada |
 | :--- | :--- | :--- | :--- |
-| **T-01** | ChatGPT / Claude | Estrutura inicial da tabela de limites de CH | A equipa ajustou os valores dos tetos por dimensão |
+| **T-01** | ChatGPT / Claude | Estrutura inicial da tabela de limites de CH | A equipe ajustou os valores dos tetos por dimensão |
 | **T-02** | ChatGPT / Claude | Código/interface do formulário de envio do discente | Adicionada a validação de bloqueio quando a CH solicitada é <= 0 |
 | **T-03** | ChatGPT / Claude | Fórmula de cálculo automático de acumulação de horas | Corrigida a regra para travar o saldo no limite máximo da dimensão |
 | **T-04** | ChatGPT / Claude | Interface do ecrã de avaliação e botão de indeferimento | Adicionada obrigatoriedade de preenchimento do campo de justificativa |
