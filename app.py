@@ -358,4 +358,266 @@ else:
     # -----------------------------------------------------------------------------
     if perfil == "Discente":
         st.header("📌 Painel do Discente")
-        tab_submeter, tab_extrato, tab_quadro = st.
+        tab_submeter, tab_extrato, tab_quadro = st.tabs(["Submeter Solicitação", "Extrato de Horas", "📊 Quadro de Atividades"])
+        
+        with tab_submeter:
+            st.subheader("Formulário de Solicitação de AC")
+            
+            conn = get_connection()
+            df_param = pd.read_sql("SELECT tipo_atividade, dimensao, ch_por_atividade, ch_maxima_total, doc_comprovatorio FROM parametros", conn)
+            conn.close()
+            
+            # 1. Seleção da Dimensão (Eixo)
+            dimensoes_disponiveis = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
+            dimensao = st.selectbox("1. Selecione a Dimensão (Eixo):", dimensoes_disponiveis)
+            
+            # 2. Filtragem dos tipos de atividade por dimensão
+            df_filtrado = df_param[df_param["dimensao"] == dimensao]
+            tipos_filtrados = df_filtrado["tipo_atividade"].tolist()
+            
+            with st.form("form_solicitacao"):
+                tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
+                
+                # Exibe detalhes e limites da atividade selecionada
+                if tipo:
+                    row_info = df_filtrado[df_filtrado["tipo_atividade"] == tipo].iloc[0]
+                    st.info(f"""
+                    📌 **Regras de Carga Horária:**
+                    * **Teto por Atividade/Item:** {row_info['ch_por_atividade']}
+                    * **Teto Máximo Geral Acumulado:** {row_info['ch_maxima_total']} horas
+                    * **Documento Exigido:** {row_info['doc_comprovatorio']}
+                    """)
+
+                titulo = st.text_input("3. Título / Descrição da Atividade:")
+                ch_solic = st.number_input("4. Carga Horária Solicitada (CH):", min_value=0.0, step=1.0)
+                
+                st.markdown("---")
+                st.markdown("**5. Comprovante da Atividade (Anexe o arquivo PDF e/ou insira o Link):**")
+                arquivo_pdf = st.file_uploader("📎 Anexar Comprovante (Arquivo PDF):", type=["pdf"])
+                link_doc = st.text_input("🔗 OU Link para o Documento Comprovativo:")
+                
+                btn_submeter = st.form_submit_button("Submeter Solicitação")
+                
+                if btn_submeter:
+                    erros = []
+                    if not dimensao:
+                        erros.append("Dimensão da atividade")
+                    if not tipo:
+                        erros.append("Tipo de atividade realizada")
+                    if not titulo.strip():
+                        erros.append("Título da atividade")
+                    if ch_solic <= 0:
+                        erros.append("Carga Horária Solicitada (deve ser maior que zero)")
+                    if not arquivo_pdf and not link_doc.strip():
+                        erros.append("Documento comprobatório (anexe o PDF ou insira o Link)")
+                    
+                    if erros:
+                        st.error(f"⚠️ **Envio Impedido:** É necessário corrigir os seguintes campos: **{', '.join(erros)}**.")
+                    else:
+                        data_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        pdf_nome = arquivo_pdf.name if arquivo_pdf is not None else None
+                        pdf_bytes = arquivo_pdf.read() if arquivo_pdf is not None else None
+                        link_final = link_doc.strip() if link_doc.strip() else None
+                        
+                        conn = get_connection()
+                        c = conn.cursor()
+                        c.execute('''
+                            INSERT INTO solicitacoes 
+                            (nome_aluno, cpf, email, dimensao, tipo_atividade, titulo, ch_solicitada, link_comprovativo, comprovativo_nome, comprovativo_blob, data_solicitacao)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (st.session_state["nome"], st.session_state["cpf"], st.session_state["email"], dimensao, tipo, titulo, ch_solic, link_final, pdf_nome, pdf_bytes, data_atual))
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ **Solicitação gravada com sucesso!** Estado: **Pendente** | Data: " + data_atual)
+
+        with tab_extrato:
+            st.subheader("Extrato de Saldo do Discente")
+            conn = get_connection()
+            df_aluno = pd.read_sql_query("SELECT id, dimensao, tipo_atividade, titulo, ch_solicitada, ch_aprovada, ch_maxima_atingida, status, justificativa, registado_siga FROM solicitacoes WHERE cpf = ?", conn, params=(st.session_state["cpf"],))
+            conn.close()
+            
+            if not df_aluno.empty:
+                st.dataframe(df_aluno, use_container_width=True)
+                total_aprovado = df_aluno["ch_aprovada"].sum()
+                st.metric(label="Total de Carga Horária Aprovada", value=f"{total_aprovado} horas")
+            else:
+                st.info("Nenhuma solicitação cadastrada até o momento.")
+
+        with tab_quadro:
+            st.subheader("📋 Quadro Geral de Atividades, Tetos e Documentos Comprobatórios")
+            conn = get_connection()
+            df_quadro = pd.read_sql_query(
+                """
+                SELECT 
+                    dimensao AS 'Eixo / Dimensão', 
+                    tipo_atividade AS 'Atividade', 
+                    ch_por_atividade AS 'Carga Horária por Atividade (Teto Item)', 
+                    ch_maxima_total AS 'Carga Horária Máxima Total (Teto Geral)', 
+                    doc_comprovatorio AS 'Documento Comprobatório' 
+                FROM parametros 
+                ORDER BY dimensao, tipo_atividade
+                """, 
+                conn
+            )
+            conn.close()
+            st.dataframe(df_quadro, use_container_width=True, hide_index=True)
+
+    # -----------------------------------------------------------------------------
+    # PAINEL DE AVALIAÇÃO DO DOCENTE / AVALIADOR
+    # -----------------------------------------------------------------------------
+    elif perfil == "Docente/Avaliador":
+        st.header("📋 Painel de Avaliação do Docente / Avaliador")
+        tab_avaliar, tab_quadro_eval = st.tabs(["Avaliar Solicitações", "📊 Consulta de Atividades"])
+        
+        with tab_avaliar:
+            conn = get_connection()
+            df_pendentes = pd.read_sql_query("SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_solicitada, link_comprovativo, comprovativo_nome, data_solicitacao FROM solicitacoes WHERE status = 'Pendente'", conn)
+            conn.close()
+            
+            if df_pendentes.empty:
+                st.success("Nenhuma solicitação pendente para avaliação no momento.")
+            else:
+                st.subheader("Solicitações Pendentes de Avaliação")
+                st.dataframe(df_pendentes[["id", "nome_aluno", "cpf", "dimensao", "tipo_atividade", "titulo", "ch_solicitada", "comprovativo_nome", "data_solicitacao"]], use_container_width=True)
+                
+                id_sel = st.number_input("Informe o ID da Solicitação para Avaliar:", min_value=1, step=1)
+                solic = df_pendentes[df_pendentes["id"] == id_sel]
+                
+                if not solic.empty:
+                    dados = solic.iloc[0]
+                    st.markdown("---")
+                    st.markdown(f"### Avaliando Processo #{dados['id']} - Aluno: {dados['nome_aluno']}")
+                    st.write(f"**Dimensão:** {dados['dimensao']} | **Tipo:** {dados['tipo_atividade']}")
+                    st.write(f"**Título:** {dados['titulo']} | **CH Solicitada:** {dados['ch_solicitada']}h")
+                    
+                    conn = get_connection()
+                    c = conn.cursor()
+                    c.execute("SELECT comprovativo_nome, comprovativo_blob FROM solicitacoes WHERE id = ?", (id_sel,))
+                    blob_row = c.fetchone()
+                    
+                    st.markdown("**Documentação Comprobatória:**")
+                    if dados['link_comprovativo']:
+                        st.markdown(f"🔗 **Link Externo:** [{dados['link_comprovativo']}]({dados['link_comprovativo']})")
+                    
+                    if blob_row and blob_row[1]:
+                        nome_arquivo = blob_row[0] if blob_row[0] else f"comprovante_{id_sel}.pdf"
+                        st.download_button(
+                            label=f"📄 Baixar PDF Anexado ({nome_arquivo})",
+                            data=blob_row[1],
+                            file_name=nome_arquivo,
+                            mime="application/pdf"
+                        )
+                    elif not dados['link_comprovativo']:
+                        st.warning("Nenhum comprovante anexado.")
+                    
+                    c.execute("SELECT ch_por_atividade, ch_maxima_total FROM parametros WHERE tipo_atividade = ?", (dados['tipo_atividade'],))
+                    res_teto = c.fetchone()
+                    conn.close()
+                    
+                    if res_teto:
+                        st.info(f"ℹ️ **Regra da Atividade:** Limite por item: `{res_teto[0]}` | Teto máximo acumulado: `{res_teto[1]} horas`.")
+                        teto_atividade = float(res_teto[1])
+                    else:
+                        teto_atividade = 20.0
+                    
+                    with st.form("form_avaliacao"):
+                        decisao = st.radio("Ação do Avaliador:", ["Aprovar", "Indeferir"])
+                        ch_informada = st.number_input("Carga Horária Aprovada (CH):", min_value=0.0, max_value=float(dados['ch_solicitada']), step=1.0)
+                        justificativa = st.text_area("Justificativa da Avaliação (Obrigatória para indeferimentos ou 0h):")
+                        
+                        btn_confirmar_eval = st.form_submit_button("Guardar Avaliação")
+                        
+                        if btn_confirmar_eval:
+                            if (decisao == "Indeferir" or ch_informada == 0) and not justificativa.strip():
+                                st.error("🚫 **Gravação Bloqueada:** Quando a CH aprovada for 0 horas (ou em caso de indeferimento), o preenchimento da justificativa é obrigatório!")
+                            else:
+                                ch_final = 0.0
+                                ch_max_atingida = "Não"
+                                nuevo_status = "Indeferido"
+                                
+                                if decisao == "Aprovar":
+                                    nuevo_status = "Aprovado"
+                                    if ch_informada >= teto_atividade or dados['ch_solicitada'] >= teto_atividade:
+                                        ch_final = min(ch_informada, teto_atividade)
+                                        ch_max_atingida = "Sim"
+                                        st.warning(f"⚠️ **Teto Atingido:** O limite geral de {teto_atividade}h da atividade foi aplicado.")
+                                    else:
+                                        ch_final = ch_informada
+                                
+                                conn = get_connection()
+                                c = conn.cursor()
+                                c.execute('''
+                                    UPDATE solicitacoes 
+                                    SET ch_aprovada = ?, ch_maxima_atingida = ?, status = ?, nome_avaliador = ?, justificativa = ?
+                                    WHERE id = ?
+                                ''', (ch_final, ch_max_atingida, nuevo_status, st.session_state["nome"], justificativa, id_sel))
+                                conn.commit()
+                                conn.close()
+                                st.success(f"✅ Processo #{id_sel} avaliado como '{nuevo_status}' com sucesso!")
+                                st.rerun()
+
+        with tab_quadro_eval:
+            st.subheader("📋 Tabela de Consulta do Regulamento de Atividades")
+            conn = get_connection()
+            df_quadro = pd.read_sql_query(
+                """
+                SELECT 
+                    dimensao AS 'Eixo / Dimensão', 
+                    tipo_atividade AS 'Atividade', 
+                    ch_por_atividade AS 'Carga Horária por Atividade (Teto Item)', 
+                    ch_maxima_total AS 'Carga Horária Máxima Total (Teto Geral)', 
+                    doc_comprovatorio AS 'Documento Comprobatório' 
+                FROM parametros 
+                ORDER BY dimensao, tipo_atividade
+                """, 
+                conn
+            )
+            conn.close()
+            st.dataframe(df_quadro, use_container_width=True, hide_index=True)
+
+    # -----------------------------------------------------------------------------
+    # PAINEL DO TÉCNICO ADMINISTRATIVO
+    # -----------------------------------------------------------------------------
+    elif perfil == "Técnico Administrativo":
+        st.header("⚙️ Painel do Técnico Administrativo")
+        
+        conn = get_connection()
+        df_avaliados = pd.read_sql_query("SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, ch_aprovada, status, registado_siga FROM solicitacoes WHERE status IN ('Aprovado', 'Indeferido')", conn)
+        conn.close()
+        
+        if df_avaliados.empty:
+            st.info("Nenhum processo avaliado pendente de registro no SIG@.")
+        else:
+            st.subheader("Processos Avaliados para Lançamento no SIG@")
+            st.dataframe(df_avaliados, use_container_width=True)
+            
+            st.markdown("---")
+            st.subheader("Confirmar Lançamento no Sistema Acadêmico Oficial (SIG@)")
+            
+            with st.form("form_siga"):
+                id_processo = st.number_input("Informe o ID da Solicitação Avaliada:", min_value=1, step=1)
+                confirmar_siga = st.checkbox("Confirmar: Registrado no SIG@?")
+                
+                btn_siga = st.form_submit_button("Confirmar Integração no SIG@")
+                
+                if btn_siga:
+                    if not confirmar_siga:
+                        st.warning("Marque a opção 'Registrado no SIG@?' para confirmar a finalização do processo.")
+                    else:
+                        conn = get_connection()
+                        c = conn.cursor()
+                        c.execute('''
+                            UPDATE solicitacoes 
+                            SET registado_siga = 'Sim', status = 'Concluído'
+                            WHERE id = ? AND status IN ('Aprovado', 'Indeferido')
+                        ''', (id_processo,))
+                        linhas_afetadas = c.rowcount
+                        conn.commit()
+                        conn.close()
+                        
+                        if linhas_afetadas > 0:
+                            st.success(f"✅ **Processo #{id_processo} finalizado com sucesso!** Estado atualizado para **Concluído**.")
+                            st.rerun()
+                        else:
+                            st.error(f"Solicitação #{id_processo} não encontrada ou ainda não avaliada pelo docente.")
