@@ -16,7 +16,7 @@ def init_db():
     c = conn.cursor()
     
     # 1. Tabela de Usuários
-    c.execute('''
+    c.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             cpf TEXT PRIMARY KEY,
             nome TEXT,
@@ -24,11 +24,11 @@ def init_db():
             senha TEXT,
             perfil TEXT
         )
-    ''')
+    """)
     
     # 2. Tabela de Parâmetros com os DOIS Tetos + Documento Comprobatório
     c.execute("DROP TABLE IF EXISTS parametros")
-    c.execute('''
+    c.execute("""
         CREATE TABLE parametros (
             tipo_atividade TEXT PRIMARY KEY,
             dimensao TEXT,
@@ -36,7 +36,7 @@ def init_db():
             ch_maxima_total REAL,
             doc_comprovatorio TEXT
         )
-    ''')
+    """)
     
     # Cadastro completo das 20 atividades com Tetos Individuais e Tetos Acumulados Gerais
     tabela_oficial_parametros = [
@@ -191,7 +191,7 @@ def init_db():
     c.executemany("INSERT INTO parametros VALUES (?, ?, ?, ?, ?)", tabela_oficial_parametros)
 
     # 3. Tabela de Solicitações de AC
-    c.execute('''
+    c.execute("""
         CREATE TABLE IF NOT EXISTS solicitacoes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome_aluno TEXT,
@@ -212,7 +212,7 @@ def init_db():
             justificativa TEXT,
             registado_siga TEXT DEFAULT 'Não'
         )
-    ''')
+    """)
     
     c.execute("PRAGMA table_info(solicitacoes)")
     colunas_solic = [row[1] for row in c.fetchall()]
@@ -318,10 +318,10 @@ if not st.session_state["logado"]:
                             st.warning("Este CPF já possui uma senha cadastrada! Alterne para a opção 'Já tenho senha (Login)'.")
                             conn.close()
                         else:
-                            c.execute('''
+                            c.execute("""
                                 INSERT OR REPLACE INTO usuarios (cpf, nome, email, senha, perfil)
                                 VALUES (?, ?, ?, ?, ?)
-                            ''', (cpf_cad, nome_cad, email_cad, nova_senha, perfil_cad))
+                            """, (cpf_cad, nome_cad, email_cad, nova_senha, perfil_cad))
                             conn.commit()
                             conn.close()
                             
@@ -365,27 +365,43 @@ else:
             
             conn = get_connection()
             df_param = pd.read_sql("SELECT tipo_atividade, dimensao, ch_por_atividade, ch_maxima_total, doc_comprovatorio FROM parametros", conn)
+            
+            # Consulta total acumulado pelo aluno por eixo
+            df_horas_eixo = pd.read_sql(
+                "SELECT dimensao, SUM(ch_aprovada) as total_aprovado FROM solicitacoes WHERE cpf = ? AND status IN ('Aprovado', 'Concluído') GROUP BY dimensao",
+                conn,
+                params=(st.session_state["cpf"],)
+            )
             conn.close()
             
-            # 1. Seleção da Dimensão (Eixo) - Fora do formulário para reatividade
+            horas_acumuladas_dict = dict(zip(df_horas_eixo["dimensao"], df_horas_eixo["total_aprovado"])) if not df_horas_eixo.empty else {}
+            
+            # 1. Seleção da Dimensão (Eixo)
             dimensoes_disponiveis = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
             dimensao = st.selectbox("1. Selecione a Dimensão (Eixo):", dimensoes_disponiveis)
+            
+            horas_no_eixo_atual = horas_acumuladas_dict.get(dimensao, 0.0)
+            if horas_no_eixo_atual >= 100.0:
+                st.warning(f"⚠️ **Atenção (Teto de Eixo):** Você já acumulou **{horas_no_eixo_atual:.1f}h** aprovadas no eixo **{dimensao}**. O regulamento limita a contabilização a **no máximo 100 horas por eixo**.")
+            elif horas_no_eixo_atual > 0:
+                st.info(f"📊 **Saldo Atual no Eixo {dimensao}:** {horas_no_eixo_atual:.1f} / 100.0 horas máximas computáveis.")
             
             # 2. Filtragem dos tipos de atividade por dimensão
             df_filtrado = df_param[df_param["dimensao"] == dimensao]
             tipos_filtrados = df_filtrado["tipo_atividade"].tolist()
             
-            # 3. Seleção do Tipo de Atividade - FORA do formulário (reatividade instantânea)
+            # 3. Seleção do Tipo de Atividade - FORA do formulário
             tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
             
-            # Exibe os dois tetos e documentos da atividade selecionada em tempo real
+            # Exibe os dois tetos e documentos da atividade selecionada
             if tipo:
                 row_info = df_filtrado[df_filtrado["tipo_atividade"] == tipo].iloc[0]
                 st.info(f"""
                 📌 **Regras da Atividade Selecionada:**
                 * **Teto por Atividade/Item:** {row_info['ch_por_atividade']}
-                * **Teto Máximo Geral Acumulado:** {row_info['ch_maxima_total']} horas
+                * **Teto Máximo do Item:** {row_info['ch_maxima_total']} horas
                 * **Documento Exigido:** {row_info['doc_comprovatorio']}
+                * **Regra Geral do Eixo:** Máximo de 100.0 horas contabilizadas no eixo **{dimensao}** (Mínimo de 2 eixos exigidos para o curso).
                 """)
 
             with st.form("form_solicitacao"):
@@ -423,25 +439,74 @@ else:
                         
                         conn = get_connection()
                         c = conn.cursor()
-                        c.execute('''
+                        c.execute("""
                             INSERT INTO solicitacoes 
                             (nome_aluno, cpf, email, dimensao, tipo_atividade, titulo, ch_solicitada, link_comprovativo, comprovativo_nome, comprovativo_blob, data_solicitacao)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (st.session_state["nome"], st.session_state["cpf"], st.session_state["email"], dimensao, tipo, titulo, ch_solic, link_final, pdf_nome, pdf_bytes, data_atual))
+                        """, (st.session_state["nome"], st.session_state["cpf"], st.session_state["email"], dimensao, tipo, titulo, ch_solic, link_final, pdf_nome, pdf_bytes, data_atual))
                         conn.commit()
                         conn.close()
                         st.success("✅ **Solicitação gravada com sucesso!** Estado: **Pendente** | Data: " + data_atual)
 
         with tab_extrato:
-            st.subheader("Extrato de Saldo do Discente")
+            st.subheader("Extrato de Saldo e Integralização de Horas do Discente")
+            
             conn = get_connection()
             df_aluno = pd.read_sql_query("SELECT id, dimensao, tipo_atividade, titulo, ch_solicitada, ch_aprovada, ch_maxima_atingida, status, justificativa, registado_siga FROM solicitacoes WHERE cpf = ?", conn, params=(st.session_state["cpf"],))
             conn.close()
             
             if not df_aluno.empty:
+                st.markdown("### 📄 Histórico de Solicitações Submetidas")
                 st.dataframe(df_aluno, use_container_width=True)
-                total_aprovado = df_aluno["ch_aprovada"].sum()
-                st.metric(label="Total de Carga Horária Aprovada", value=f"{total_aprovado} horas")
+                
+                st.markdown("---")
+                st.markdown("### 📊 Balanço de Integralização por Eixo (Regulamento)")
+                st.caption("Regra de Integralização: Acumular horas em pelo menos 2 eixos diferentes, contabilizando no máximo 100 horas por eixo.")
+                
+                df_aprovadas = df_aluno[df_aluno["status"].isin(["Aprovado", "Concluído"])]
+                
+                eixos_cadastrados = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
+                dados_eixos = []
+                total_efetivo_curso = 0.0
+                eixos_com_horas = 0
+                
+                for e in eixos_cadastrados:
+                    sub_e = df_aprovadas[df_aprovadas["dimensao"] == e]
+                    bruto = sub_e["ch_aprovada"].sum() if not sub_e.empty else 0.0
+                    efetivo = min(bruto, 100.0)
+                    
+                    if efetivo > 0:
+                        eixos_com_horas += 1
+                    total_efetivo_curso += efetivo
+                    
+                    if bruto > 100.0:
+                        status_eixo = "⚠️ Teto de 100h Excedido"
+                    elif bruto > 0:
+                        status_eixo = " OK"
+                    else:
+                        status_eixo = " Sem Horas"
+
+                    dados_eixos.append({
+                        "Eixo / Dimensão": e,
+                        "Horas Aprovadas Brutas": f"{bruto:.1f} h",
+                        "Horas Aproveitáveis (Teto 100h)": f"{efetivo:.1f} h",
+                        "Situação no Eixo": status_eixo
+                    })
+                
+                df_resumo_eixos = pd.DataFrame(dados_eixos)
+                st.table(df_resumo_eixos)
+                
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    st.metric("Total Aproveitável Computado", f"{total_efetivo_curso:.1f} horas")
+                with col_m2:
+                    st.metric("Eixos com Horas Acumuladas", f"{eixos_com_horas} de 4 eixos")
+                
+                if eixos_com_horas < 2:
+                    st.error("🚨 **Pendente de Requisito Mínimo:** O regulamento exige o acúmulo de horas em **pelo menos 2 eixos diferentes**. Você possui horas contabilizadas em apenas 1 eixo até o momento.")
+                else:
+                    st.success("✅ **Requisito Multidimensional Atendido:** Você possui horas contabilizadas em 2 ou mais eixos!")
+                    
             else:
                 st.info("Nenhuma solicitação cadastrada até o momento.")
 
@@ -489,11 +554,16 @@ else:
                     dados = solic.iloc[0]
                     st.markdown("---")
                     st.markdown(f"### Avaliando Processo #{dados['id']} - Aluno: {dados['nome_aluno']}")
-                    st.write(f"**Dimensão:** {dados['dimensao']} | **Tipo:** {dados['tipo_atividade']}")
+                    st.write(f"**Dimensão (Eixo):** {dados['dimensao']} | **Tipo:** {dados['tipo_atividade']}")
                     st.write(f"**Título:** {dados['titulo']} | **CH Solicitada:** {dados['ch_solicitada']}h")
                     
                     conn = get_connection()
                     c = conn.cursor()
+                    
+                    c.execute("SELECT SUM(ch_aprovada) FROM solicitacoes WHERE cpf = ? AND dimensao = ? AND status IN ('Aprovado', 'Concluído') AND id != ?", (dados['cpf'], dados['dimensao'], id_sel))
+                    res_eixo_aluno = c.fetchone()
+                    ch_eixo_atual = res_eixo_aluno[0] if res_eixo_aluno and res_eixo_aluno[0] else 0.0
+                    
                     c.execute("SELECT comprovativo_nome, comprovativo_blob FROM solicitacoes WHERE id = ?", (id_sel,))
                     blob_row = c.fetchone()
                     
@@ -517,11 +587,18 @@ else:
                     conn.close()
                     
                     if res_teto:
-                        st.info(f"ℹ️ **Regra da Atividade:** Limite por item: `{res_teto[0]}` | Teto máximo acumulado: `{res_teto[1]} horas`.")
+                        st.info(f"""
+                        ℹ️ **Regras para Validação:**
+                        * Limite do item: `{res_teto[0]}` | Teto máximo da atividade: `{res_teto[1]} horas`
+                        * **Saldo atual do aluno no eixo {dados['dimensao']}:** `{ch_eixo_atual:.1f} / 100.0h`
+                        """)
                         teto_atividade = float(res_teto[1])
                     else:
                         teto_atividade = 20.0
                     
+                    if ch_eixo_atual >= 100.0:
+                        st.warning(f"⚠️ **Alerta ao Avaliador:** Este aluno já possui **{ch_eixo_atual:.1f}h** aprovadas no eixo **{dados['dimensao']}**. O regulamento aproveita no máximo **100 horas por eixo**.")
+
                     with st.form("form_avaliacao"):
                         decisao = st.radio("Ação do Avaliador:", ["Aprovar", "Indeferir"])
                         ch_informada = st.number_input("Carga Horária Aprovada (CH):", min_value=0.0, max_value=float(dados['ch_solicitada']), step=1.0)
@@ -548,11 +625,11 @@ else:
                                 
                                 conn = get_connection()
                                 c = conn.cursor()
-                                c.execute('''
+                                c.execute("""
                                     UPDATE solicitacoes 
                                     SET ch_aprovada = ?, ch_maxima_atingida = ?, status = ?, nome_avaliador = ?, justificativa = ?
                                     WHERE id = ?
-                                ''', (ch_final, ch_max_atingida, nuevo_status, st.session_state["nome"], justificativa, id_sel))
+                                """, (ch_final, ch_max_atingida, nuevo_status, st.session_state["nome"], justificativa, id_sel))
                                 conn.commit()
                                 conn.close()
                                 st.success(f"✅ Processo #{id_sel} avaliado como '{nuevo_status}' com sucesso!")
@@ -608,11 +685,11 @@ else:
                     else:
                         conn = get_connection()
                         c = conn.cursor()
-                        c.execute('''
+                        c.execute("""
                             UPDATE solicitacoes 
                             SET registado_siga = 'Sim', status = 'Concluído'
                             WHERE id = ? AND status IN ('Aprovado', 'Indeferido')
-                        ''', (id_processo,))
+                        """, (id_processo,))
                         linhas_afetadas = c.rowcount
                         conn.commit()
                         conn.close()
