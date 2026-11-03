@@ -10,7 +10,7 @@ st.set_page_config(page_title="Sistema de Controle de Atividades Complementares"
 def get_connection():
     return sqlite3.connect("banco.db", check_same_thread=False)
 
-# Inicialização e auto-migração do banco de dados
+# Inicialização e auto-migração da Tabela Oficial de Parâmetros
 def init_db():
     conn = get_connection()
     c = conn.cursor()
@@ -26,7 +26,7 @@ def init_db():
         )
     ''')
     
-    # 2. Tabela de Parâmetros de Carga Horária por Atividade
+    # 2. Tabela de Parâmetros: Recria para garantir a distribuição exata por dimensão
     c.execute("DROP TABLE IF EXISTS parametros")
     c.execute('''
         CREATE TABLE parametros (
@@ -36,35 +36,35 @@ def init_db():
         )
     ''')
     
-    # Tabela Oficial de Atividades Complementares (Extraída do Regulamento)
+    # Reorganização exata dos 20 itens conforme a nova distribuição dos eixos
     tabela_oficial_parametros = [
-        # --- EIXO: ENSINO ---
-        ("Disciplinas cursadas em outros cursos da IES/outras IES", "Ensino", 45.0),
-        ("Cursos de língua estrangeira em instituições credenciadas", "Ensino", 20.0),
-        ("Cursos livres relacionados à área de graduação", "Ensino", 30.0),
-        ("Monitoria realizada na FCAP (por semestre)", "Ensino", 45.0),
+        # --- EIXO: ENSINO (6 Opções) ---
+        ("Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES", "Ensino", 45.0),
+        ("Cursos de língua estrangeira em instituições credenciadas com aproveitamento", "Ensino", 20.0),
+        ("Cursos livres relacionados à área de graduação em instituições de ensino com aproveitamento", "Ensino", 30.0),
+        ("Monitoria realizada na FCAP em disciplinas teóricas ou práticas", "Ensino", 45.0),
         ("Estágio não curricular", "Ensino", 40.0),
-        ("Participação em projetos de ensino (por projeto)", "Ensino", 90.0),
+        ("Participação em projetos de ensino", "Ensino", 90.0),
 
-        # --- EIXO: PESQUISA ---
-        ("Participação em projetos de iniciação científica (por projeto)", "Pesquisa", 90.0),
-        ("Publicação de artigos completos em jornais, revistas e anais", "Pesquisa", 80.0),
+        # --- EIXO: PESQUISA (3 Opções) ---
+        ("Participação em projetos de iniciação científica", "Pesquisa", 90.0),
+        ("Publicação de artigos completos em jornais, revistas científicas e anais de eventos", "Pesquisa", 80.0),
         ("Apresentação de trabalho em evento científico com publicação", "Pesquisa", 90.0),
-        ("Participação em palestras como ouvinte (por palestra)", "Pesquisa", 60.0),
-        ("Participação como palestrante ou instrutor em minicurso/oficina", "Pesquisa", 40.0),
-        ("Participação em congressos, seminários, simpósios, workshops e fóruns", "Pesquisa", 40.0),
 
-        # --- EIXO: EXTENSÃO ---
-        ("Visita técnica orientada (por visita)", "Extensão", 15.0),
-        ("Participação em projetos de extensão (por projeto)", "Extensão", 90.0),
-        ("Participação em cursos de extensão (por curso)", "Extensão", 30.0),
+        # --- EIXO: EXTENSÃO (9 Opções) ---
+        ("Participação em palestras como ouvinte", "Extensão", 60.0),
+        ("Participação como palestrante ou instrutor em minicurso e oficina", "Extensão", 40.0),
+        ("Participação em congressos, seminários, simpósio, ciclo de conferências, debate, workshop, jornada, oficina e fórum", "Extensão", 40.0),
+        ("Visita técnica orientada (que não faça parte da carga horária regular)", "Extensão", 15.0),
+        ("Participação em projetos de extensão", "Extensão", 90.0),
+        ("Participação em cursos de extensão", "Extensão", 30.0),
         ("Participação como Presidente ou Diretor da Empresa Júnior", "Extensão", 90.0),
+        ("Participação como membro da Empresa Júnior", "Extensão", 60.0),
+        ("Participação em atividades acadêmicas ou comunitário-voluntárias oferecidas pelo curso", "Extensão", 30.0),
 
-        # --- EIXO: GESTÃO ---
-        ("Participação como membro da Empresa Júnior (por semestre)", "Gestão", 60.0),
-        ("Participação em atividades acadêmicas ou comunitário-voluntárias", "Gestão", 30.0),
+        # --- EIXO: GESTÃO (2 Opções) ---
         ("Representação de Presidência ou Diretoria do Diretório Acadêmico", "Gestão", 90.0),
-        ("Participação voluntária no Diretório Acadêmico (por semestre)", "Gestão", 60.0)
+        ("Participação voluntária no Diretório Acadêmico", "Gestão", 60.0)
     ]
     c.executemany("INSERT INTO parametros VALUES (?, ?, ?)", tabela_oficial_parametros)
 
@@ -92,7 +92,7 @@ def init_db():
         )
     ''')
     
-    # Migração de colunas para tabelas existentes
+    # Garantia de integridade das colunas da tabela de solicitações
     c.execute("PRAGMA table_info(solicitacoes)")
     colunas_solic = [row[1] for row in c.fetchall()]
     if "comprovativo_nome" not in colunas_solic:
@@ -131,7 +131,7 @@ if not st.session_state["logado"]:
     
     st.markdown("---")
     
-    # OPÇÃO 1: LOGIN REGULAR
+    # LOGIN REGULAR
     if opcao_acesso == "🔑 Já tenho senha (Login)":
         st.markdown("### Entrar com CPF e Senha")
         with st.form("form_login"):
@@ -163,7 +163,7 @@ if not st.session_state["logado"]:
                     except Exception as e:
                         st.error(f"Erro ao conectar ao banco de dados: {e}")
 
-    # OPÇÃO 2: PRIMEIRO ACESSO (CADASTRO)
+    # PRIMEIRO ACESSO (CADASTRO)
     else:
         st.markdown("### Cadastro de Primeiro Acesso")
         st.info("Preencha todos os campos abaixo para cadastrar seu CPF e definir sua senha de acesso.")
@@ -241,26 +241,31 @@ else:
         
         with tab_submeter:
             st.subheader("Formulário de Solicitação de AC")
+            
+            # Carrega a tabela de parâmetros
+            conn = get_connection()
+            df_param = pd.read_sql("SELECT tipo_atividade, dimensao, teto_horas FROM parametros", conn)
+            conn.close()
+            
+            # 1. Seleção da Dimensão (Eixo) - Colocada fora do formulário para reatividade instantânea
+            dimensoes_disponiveis = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
+            dimensao = st.selectbox("1. Selecione a Dimensão (Eixo):", dimensoes_disponiveis)
+            
+            # 2. Filtragem Dinâmica das Atividades da Dimensão Escolhida
+            df_filtrado = df_param[df_param["dimensao"] == dimensao]
+            tipos_filtrados = df_filtrado["tipo_atividade"].tolist()
+            
             with st.form("form_solicitacao"):
                 st.text_input("Nome do Discente:", value=st.session_state["nome"], disabled=True)
                 st.text_input("CPF:", value=st.session_state["cpf"], disabled=True)
                 
-                conn = get_connection()
-                df_param = pd.read_sql("SELECT tipo_atividade, dimensao, teto_horas FROM parametros", conn)
-                conn.close()
+                tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
                 
-                dimensoes_disponiveis = sorted(df_param["dimensao"].unique()) if not df_param.empty else ["Ensino", "Pesquisa", "Extensão", "Gestão"]
-                dimensao = st.selectbox("Dimensão da Atividade:", dimensoes_disponiveis)
+                titulo = st.text_input("3. Título / Descrição da Atividade:")
+                ch_solic = st.number_input("4. Carga Horária Solicitada (CH):", min_value=0.0, step=1.0)
                 
-                tipos_filtrados = df_param[df_param["dimensao"] == dimensao]["tipo_atividade"].tolist() if not df_param.empty else []
-                tipo = st.selectbox("Tipo de Atividade Realizada:", tipos_filtrados)
-                
-                titulo = st.text_input("Título da Atividade:")
-                ch_solic = st.number_input("Carga Horária Solicitada (CH):", min_value=0.0, step=1.0)
-                
-                # Comprovante (PDF ou Link)
                 st.markdown("---")
-                st.markdown("**Comprovante da Atividade (Anexe o arquivo PDF e/ou insira o Link):**")
+                st.markdown("**5. Comprovante da Atividade (Anexe o arquivo PDF e/ou insira o Link):**")
                 arquivo_pdf = st.file_uploader("📎 Anexar Comprovante (Arquivo PDF):", type=["pdf"])
                 link_doc = st.text_input("🔗 OU Link para o Documento Comprovativo:")
                 
@@ -338,7 +343,6 @@ else:
                 st.write(f"**Dimensão:** {dados['dimensao']} | **Tipo:** {dados['tipo_atividade']}")
                 st.write(f"**Título:** {dados['titulo']} | **CH Solicitada:** {dados['ch_solicitada']}h")
                 
-                # Exibição do Comprovante (Link e/ou Download do PDF)
                 conn = get_connection()
                 c = conn.cursor()
                 c.execute("SELECT comprovativo_nome, comprovativo_blob FROM solicitacoes WHERE id = ?", (id_sel,))
