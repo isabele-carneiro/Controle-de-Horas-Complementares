@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # Configuração da página
-st.set_page_config(page_title="Sistema de Controle de AC", layout="wide")
+st.set_page_config(page_title="Sistema de Controle de Atividades Complementares", layout="wide")
 
 # Conexão com o banco de dados SQLite
 def get_connection():
@@ -15,7 +15,7 @@ def init_db():
     conn = get_connection()
     c = conn.cursor()
     
-    # 1. Tabela de Usuários (RF-00)
+    # 1. Tabela de Usuários
     c.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
             cpf TEXT PRIMARY KEY,
@@ -26,34 +26,49 @@ def init_db():
         )
     ''')
     
-    # 2. Tabela de Parâmetros (RF-02): Auto-migração para recriar se o esquema for antigo
-    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='parametros'")
-    tabela_parametros_existe = c.fetchone()
+    # 2. Tabela de Parâmetros de Carga Horária por Atividade
+    c.execute("DROP TABLE IF EXISTS parametros")
+    c.execute('''
+        CREATE TABLE parametros (
+            tipo_atividade TEXT PRIMARY KEY,
+            dimensao TEXT,
+            teto_horas REAL
+        )
+    ''')
     
-    if tabela_parametros_existe:
-        c.execute("PRAGMA table_info(parametros)")
-        colunas_param = [row[1] for row in c.fetchall()]
-        if "tipo_atividade" not in colunas_param or "teto_horas" not in colunas_param:
-            c.execute("DROP TABLE parametros")
-            tabela_parametros_existe = None
+    # Tabela Oficial de Atividades Complementares (Extraída do Regulamento)
+    tabela_oficial_parametros = [
+        # --- EIXO: ENSINO ---
+        ("Disciplinas cursadas em outros cursos da IES/outras IES", "Ensino", 45.0),
+        ("Cursos de língua estrangeira em instituições credenciadas", "Ensino", 20.0),
+        ("Cursos livres relacionados à área de graduação", "Ensino", 30.0),
+        ("Monitoria realizada na FCAP (por semestre)", "Ensino", 45.0),
+        ("Estágio não curricular", "Ensino", 40.0),
+        ("Participação em projetos de ensino (por projeto)", "Ensino", 90.0),
 
-    if not tabela_parametros_existe:
-        c.execute('''
-            CREATE TABLE parametros (
-                tipo_atividade TEXT PRIMARY KEY,
-                dimensao TEXT,
-                teto_horas REAL
-            )
-        ''')
-        c.executemany("INSERT INTO parametros VALUES (?, ?, ?)", [
-            ("Minicurso / Oficina", "Ensino", 20.0),
-            ("Monitoria", "Ensino", 40.0),
-            ("Iniciação Científica", "Pesquisa", 40.0),
-            ("Projeto de Extensão", "Extensão", 30.0),
-            ("Representação Estudantil", "Gestão", 20.0)
-        ])
+        # --- EIXO: PESQUISA ---
+        ("Participação em projetos de iniciação científica (por projeto)", "Pesquisa", 90.0),
+        ("Publicação de artigos completos em jornais, revistas e anais", "Pesquisa", 80.0),
+        ("Apresentação de trabalho em evento científico com publicação", "Pesquisa", 90.0),
+        ("Participação em palestras como ouvinte (por palestra)", "Pesquisa", 60.0),
+        ("Participação como palestrante ou instrutor em minicurso/oficina", "Pesquisa", 40.0),
+        ("Participação em congressos, seminários, simpósios, workshops e fóruns", "Pesquisa", 40.0),
 
-    # 3. Tabela de Solicitações (RF-01, RF-02, RF-03) com suporte a anexo PDF
+        # --- EIXO: EXTENSÃO ---
+        ("Visita técnica orientada (por visita)", "Extensão", 15.0),
+        ("Participação em projetos de extensão (por projeto)", "Extensão", 90.0),
+        ("Participação em cursos de extensão (por curso)", "Extensão", 30.0),
+        ("Participação como Presidente ou Diretor da Empresa Júnior", "Extensão", 90.0),
+
+        # --- EIXO: GESTÃO ---
+        ("Participação como membro da Empresa Júnior (por semestre)", "Gestão", 60.0),
+        ("Participação em atividades acadêmicas ou comunitário-voluntárias", "Gestão", 30.0),
+        ("Representação de Presidência ou Diretoria do Diretório Acadêmico", "Gestão", 90.0),
+        ("Participação voluntária no Diretório Acadêmico (por semestre)", "Gestão", 60.0)
+    ]
+    c.executemany("INSERT INTO parametros VALUES (?, ?, ?)", tabela_oficial_parametros)
+
+    # 3. Tabela de Solicitações de AC
     c.execute('''
         CREATE TABLE IF NOT EXISTS solicitacoes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +92,7 @@ def init_db():
         )
     ''')
     
-    # Migração de colunas para bancos existentes
+    # Migração de colunas para tabelas existentes
     c.execute("PRAGMA table_info(solicitacoes)")
     colunas_solic = [row[1] for row in c.fetchall()]
     if "comprovativo_nome" not in colunas_solic:
@@ -103,7 +118,7 @@ if "logado" not in st.session_state:
     st.session_state["perfil"] = None
 
 # =============================================================================
-# RF-00: AUTENTICAÇÃO E CONTROLE DE PERFIL
+# AUTENTICAÇÃO E CONTROLE DE PERFIL
 # =============================================================================
 if not st.session_state["logado"]:
     st.subheader("🔐 Autenticação no Sistema")
@@ -116,7 +131,7 @@ if not st.session_state["logado"]:
     
     st.markdown("---")
     
-    # OPÇÃO 1: LOGIN
+    # OPÇÃO 1: LOGIN REGULAR
     if opcao_acesso == "🔑 Já tenho senha (Login)":
         st.markdown("### Entrar com CPF e Senha")
         with st.form("form_login"):
@@ -218,13 +233,12 @@ else:
     perfil = st.session_state["perfil"]
 
     # -----------------------------------------------------------------------------
-    # CA-00a: PAINEL DO DISCENTE (ALUNO)
+    # PAINEL DO DISCENTE (ALUNO)
     # -----------------------------------------------------------------------------
     if perfil == "Discente":
         st.header("📌 Painel do Discente")
-        tab_submeter, tab_extrato = st.tabs(["Submeter Solicitação (RF-01)", "Extrato de Horas"])
+        tab_submeter, tab_extrato = st.tabs(["Submeter Solicitação", "Extrato de Horas"])
         
-        # RF-01: Submissão de Solicitação de AC
         with tab_submeter:
             st.subheader("Formulário de Solicitação de AC")
             with st.form("form_solicitacao"):
@@ -238,17 +252,17 @@ else:
                 dimensoes_disponiveis = sorted(df_param["dimensao"].unique()) if not df_param.empty else ["Ensino", "Pesquisa", "Extensão", "Gestão"]
                 dimensao = st.selectbox("Dimensão da Atividade:", dimensoes_disponiveis)
                 
-                tipos_filtrados = df_param[df_param["dimensao"] == dimensao]["tipo_atividade"].tolist() if not df_param.empty else ["Outra"]
+                tipos_filtrados = df_param[df_param["dimensao"] == dimensao]["tipo_atividade"].tolist() if not df_param.empty else []
                 tipo = st.selectbox("Tipo de Atividade Realizada:", tipos_filtrados)
                 
                 titulo = st.text_input("Título da Atividade:")
                 ch_solic = st.number_input("Carga Horária Solicitada (CH):", min_value=0.0, step=1.0)
                 
-                # Anexo de Arquivo PDF e/ou Hiperligação
+                # Comprovante (PDF ou Link)
                 st.markdown("---")
-                st.markdown("**Comprovante da Atividade (Anexe o arquivo PDF e/ou insira o link):**")
-                arquivo_pdf = st.file_uploader("📎 Anexar Comprovante (Ficheiro PDF):", type=["pdf"])
-                link_doc = st.text_input("🔗 OU Hiperligação para o Documento Comprovativo:")
+                st.markdown("**Comprovante da Atividade (Anexe o arquivo PDF e/ou insira o Link):**")
+                arquivo_pdf = st.file_uploader("📎 Anexar Comprovante (Arquivo PDF):", type=["pdf"])
+                link_doc = st.text_input("🔗 OU Link para o Documento Comprovativo:")
                 
                 btn_submeter = st.form_submit_button("Submeter Solicitação")
                 
@@ -266,7 +280,7 @@ else:
                         erros.append("Documento comprobatório (anexe o PDF ou insira o Link)")
                     
                     if erros:
-                        st.error(f"⚠️ **Envio Impedido (CA-02):** É necessário corrigir os seguintes campos: **{', '.join(erros)}**.")
+                        st.error(f"⚠️ **Envio Impedido:** É necessário corrigir os seguintes campos: **{', '.join(erros)}**.")
                     else:
                         data_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
@@ -283,7 +297,7 @@ else:
                         ''', (st.session_state["nome"], st.session_state["cpf"], st.session_state["email"], dimensao, tipo, titulo, ch_solic, link_final, pdf_nome, pdf_bytes, data_atual))
                         conn.commit()
                         conn.close()
-                        st.success("✅ **Solicitação gravada com sucesso! (CA-01)** Estado: **Pendente** | Data: " + data_atual)
+                        st.success("✅ **Solicitação gravada com sucesso!** Estado: **Pendente** | Data: " + data_atual)
 
         with tab_extrato:
             st.subheader("Extrato de Saldo do Discente")
@@ -299,7 +313,7 @@ else:
                 st.info("Nenhuma solicitação cadastrada até o momento.")
 
     # -----------------------------------------------------------------------------
-    # CA-00b: PAINEL DE AVALIAÇÃO DO DOCENTE / AVALIADOR
+    # PAINEL DE AVALIAÇÃO DO DOCENTE / AVALIADOR
     # -----------------------------------------------------------------------------
     elif perfil == "Docente/Avaliador":
         st.header("📋 Painel de Avaliação do Docente / Avaliador")
@@ -320,4 +334,117 @@ else:
             if not solic.empty:
                 dados = solic.iloc[0]
                 st.markdown("---")
-                st.markdown
+                st.markdown(f"### Avaliando Processo #{dados['id']} - Aluno: {dados['nome_aluno']}")
+                st.write(f"**Dimensão:** {dados['dimensao']} | **Tipo:** {dados['tipo_atividade']}")
+                st.write(f"**Título:** {dados['titulo']} | **CH Solicitada:** {dados['ch_solicitada']}h")
+                
+                # Exibição do Comprovante (Link e/ou Download do PDF)
+                conn = get_connection()
+                c = conn.cursor()
+                c.execute("SELECT comprovativo_nome, comprovativo_blob FROM solicitacoes WHERE id = ?", (id_sel,))
+                blob_row = c.fetchone()
+                
+                st.markdown("**Documentação Comprobatória:**")
+                if dados['link_comprovativo']:
+                    st.markdown(f"🔗 **Link Externo:** [{dados['link_comprovativo']}]({dados['link_comprovativo']})")
+                
+                if blob_row and blob_row[1]:
+                    nome_arquivo = blob_row[0] if blob_row[0] else f"comprovante_{id_sel}.pdf"
+                    st.download_button(
+                        label=f"📄 Baixar PDF Anexado ({nome_arquivo})",
+                        data=blob_row[1],
+                        file_name=nome_arquivo,
+                        mime="application/pdf"
+                    )
+                elif not dados['link_comprovativo']:
+                    st.warning("Nenhum comprovante anexado.")
+                
+                # Busca teto da atividade
+                c.execute("SELECT teto_horas FROM parametros WHERE tipo_atividade = ?", (dados['tipo_atividade'],))
+                res_teto = c.fetchone()
+                conn.close()
+                
+                teto_atividade = res_teto[0] if res_teto else 20.0
+                st.info(f"ℹ️ **Teto Máximo Configurado para esta atividade:** {teto_atividade} horas.")
+                
+                with st.form("form_avaliacao"):
+                    decisao = st.radio("Ação do Avaliador:", ["Aprovar", "Indeferir"])
+                    ch_informada = st.number_input("Carga Horária Aprovada (CH):", min_value=0.0, max_value=float(dados['ch_solicitada']), step=1.0)
+                    justificativa = st.text_area("Justificativa da Avaliação (Obrigatória para indeferimentos ou 0h):")
+                    
+                    btn_confirmar_eval = st.form_submit_button("Guardar Avaliação")
+                    
+                    if btn_confirmar_eval:
+                        if (decisao == "Indeferir" or ch_informada == 0) and not justificativa.strip():
+                            st.error("🚫 **Gravação Bloqueada:** Quando a CH aprovada for 0 horas (ou em caso de indeferimento), o preenchimento da justificativa é obrigatório!")
+                        else:
+                            ch_final = 0.0
+                            ch_max_atingida = "Não"
+                            nuevo_status = "Indeferido"
+                            
+                            if decisao == "Aprovar":
+                                nuevo_status = "Aprovado"
+                                if ch_informada >= teto_atividade or dados['ch_solicitada'] >= teto_atividade:
+                                    ch_final = min(ch_informada, teto_atividade)
+                                    ch_max_atingida = "Sim"
+                                    st.warning(f"⚠️ **Teto Atingido:** O limite de {teto_atividade}h da atividade foi aplicado. Indicador 'CH máxima atingida' marcado como **Sim**.")
+                                else:
+                                    ch_final = ch_informada
+                            
+                            conn = get_connection()
+                            c = conn.cursor()
+                            c.execute('''
+                                UPDATE solicitacoes 
+                                SET ch_aprovada = ?, ch_maxima_atingida = ?, status = ?, nome_avaliador = ?, justificativa = ?
+                                WHERE id = ?
+                            ''', (ch_final, ch_max_atingida, nuevo_status, st.session_state["nome"], justificativa, id_sel))
+                            conn.commit()
+                            conn.close()
+                            st.success(f"✅ Processo #{id_sel} avaliado como '{nuevo_status}' com sucesso!")
+                            st.rerun()
+
+    # -----------------------------------------------------------------------------
+    # PAINEL DO TÉCNICO ADMINISTRATIVO
+    # -----------------------------------------------------------------------------
+    elif perfil == "Técnico Administrativo":
+        st.header("⚙️ Painel do Técnico Administrativo")
+        
+        conn = get_connection()
+        df_avaliados = pd.read_sql_query("SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, ch_aprovada, status, registado_siga FROM solicitacoes WHERE status IN ('Aprovado', 'Indeferido')", conn)
+        conn.close()
+        
+        if df_avaliados.empty:
+            st.info("Nenhum processo avaliado pendente de registro no SIG@.")
+        else:
+            st.subheader("Processos Avaliados para Lançamento no SIG@")
+            st.dataframe(df_avaliados, use_container_width=True)
+            
+            st.markdown("---")
+            st.subheader("Confirmar Lançamento no Sistema Acadêmico Oficial (SIG@)")
+            
+            with st.form("form_siga"):
+                id_processo = st.number_input("Informe o ID da Solicitação Avaliada:", min_value=1, step=1)
+                confirmar_siga = st.checkbox("Confirmar: Registrado no SIG@?")
+                
+                btn_siga = st.form_submit_button("Confirmar Integração no SIG@")
+                
+                if btn_siga:
+                    if not confirmar_siga:
+                        st.warning("Marque a opção 'Registrado no SIG@?' para confirmar a finalização do processo.")
+                    else:
+                        conn = get_connection()
+                        c = conn.cursor()
+                        c.execute('''
+                            UPDATE solicitacoes 
+                            SET registado_siga = 'Sim', status = 'Concluído'
+                            WHERE id = ? AND status IN ('Aprovado', 'Indeferido')
+                        ''', (id_processo,))
+                        linhas_afetadas = c.rowcount
+                        conn.commit()
+                        conn.close()
+                        
+                        if linhas_afetadas > 0:
+                            st.success(f"✅ **Processo #{id_processo} finalizado com sucesso!** Estado atualizado para **Concluído**.")
+                            st.rerun()
+                        else:
+                            st.error(f"Solicitação #{id_processo} não encontrada ou ainda não avaliada pelo docente.")
