@@ -36,7 +36,7 @@ def init_db():
         )
     ''')
     
-    # Reorganização exata dos 20 itens conforme a nova distribuição dos eixos
+    # Reorganização exata dos 20 itens conforme a distribuição dos eixos
     tabela_oficial_parametros = [
         # --- EIXO: ENSINO (6 Opções) ---
         ("Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES", "Ensino", 45.0),
@@ -247,7 +247,7 @@ else:
             df_param = pd.read_sql("SELECT tipo_atividade, dimensao, teto_horas FROM parametros", conn)
             conn.close()
             
-            # 1. Seleção da Dimensão (Eixo) - Colocada fora do formulário para reatividade instantânea
+            # 1. Seleção da Dimensão (Eixo) - Reatividade em tempo real
             dimensoes_disponiveis = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
             dimensao = st.selectbox("1. Selecione a Dimensão (Eixo):", dimensoes_disponiveis)
             
@@ -256,11 +256,7 @@ else:
             tipos_filtrados = df_filtrado["tipo_atividade"].tolist()
             
             with st.form("form_solicitacao"):
-                st.text_input("Nome do Discente:", value=st.session_state["nome"], disabled=True)
-                st.text_input("CPF:", value=st.session_state["cpf"], disabled=True)
-                
                 tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
-                
                 titulo = st.text_input("3. Título / Descrição da Atividade:")
                 ch_solic = st.number_input("4. Carga Horária Solicitada (CH):", min_value=0.0, step=1.0)
                 
