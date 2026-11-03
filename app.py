@@ -10,7 +10,7 @@ st.set_page_config(page_title="Sistema de Controle de Atividades Complementares"
 def get_connection():
     return sqlite3.connect("banco.db", check_same_thread=False)
 
-# Inicialização e auto-migração da Tabela Oficial de Parâmetros
+# Inicialização e carregamento da Tabela Oficial de Parâmetros
 def init_db():
     conn = get_connection()
     c = conn.cursor()
@@ -26,47 +26,169 @@ def init_db():
         )
     ''')
     
-    # 2. Tabela de Parâmetros
+    # 2. Tabela de Parâmetros com os DOIS Tetos + Documento Comprobatório
     c.execute("DROP TABLE IF EXISTS parametros")
     c.execute('''
         CREATE TABLE parametros (
             tipo_atividade TEXT PRIMARY KEY,
             dimensao TEXT,
-            teto_horas REAL
+            ch_por_atividade TEXT,
+            ch_maxima_total REAL,
+            doc_comprovatorio TEXT
         )
     ''')
     
-    # Tabela Oficial de Atividades e Tetos de Horas (20 Itens Organizados)
+    # Cadastro completo das 20 atividades com Tetos Individuais e Tetos Acumulados Gerais
     tabela_oficial_parametros = [
         # --- EIXO: ENSINO (6 Opções) ---
-        ("Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES", "Ensino", 45.0),
-        ("Cursos de língua estrangeira em instituições credenciadas com aproveitamento", "Ensino", 20.0),
-        ("Cursos livres relacionados à área de graduação em instituições de ensino com aproveitamento", "Ensino", 30.0),
-        ("Monitoria realizada na FCAP em disciplinas teóricas ou práticas", "Ensino", 45.0),
-        ("Estágio não curricular", "Ensino", 40.0),
-        ("Participação em projetos de ensino", "Ensino", 90.0),
+        (
+            "Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES", 
+            "Ensino", 
+            "Até 15 horas por disciplina", 
+            45.0, 
+            "Histórico escolar e ementa da disciplina"
+        ),
+        (
+            "Cursos de língua estrangeira em instituições credenciadas com aproveitamento", 
+            "Ensino", 
+            "Até 10 horas por curso", 
+            20.0, 
+            "Certificado de conclusão"
+        ),
+        (
+            "Cursos livres relacionados à área de graduação em instituições de ensino com aproveitamento", 
+            "Ensino", 
+            "Até 10 horas por curso", 
+            30.0, 
+            "Certificado de conclusão"
+        ),
+        (
+            "Monitoria realizada na FCAP em disciplinas teóricas ou práticas", 
+            "Ensino", 
+            "15 horas por monitoria/semestre", 
+            45.0, 
+            "Certificado de participação emitido pela coordenação responsável"
+        ),
+        (
+            "Estágio não curricular", 
+            "Ensino", 
+            "1 hora por hora realizada", 
+            40.0, 
+            "Contrato do estágio e relatório de atividades"
+        ),
+        (
+            "Participação em projetos de ensino", 
+            "Ensino", 
+            "Até 30 horas por projeto", 
+            90.0, 
+            "Declaração de participação emitida pela coordenação responsável"
+        ),
 
         # --- EIXO: PESQUISA (3 Opções) ---
-        ("Participação em projetos de iniciação científica", "Pesquisa", 90.0),
-        ("Publicação de artigos completos em jornais, revistas científicas e anais de eventos", "Pesquisa", 80.0),
-        ("Apresentação de trabalho em evento científico com publicação", "Pesquisa", 90.0),
+        (
+            "Participação em projetos de iniciação científica", 
+            "Pesquisa", 
+            "Até 30 horas por projeto", 
+            90.0, 
+            "Declaração de participação emitida pela Coordenação de Pesquisa"
+        ),
+        (
+            "Publicação de artigos completos em jornais, revistas científicas e anais de eventos", 
+            "Pesquisa", 
+            "20 horas por artigo", 
+            80.0, 
+            "Cópia do artigo na plataforma"
+        ),
+        (
+            "Apresentação de trabalho em evento científico com publicação", 
+            "Pesquisa", 
+            "15 horas por trabalho", 
+            90.0, 
+            "Certificado de participação e cópia do trabalho"
+        ),
 
         # --- EIXO: EXTENSÃO (9 Opções) ---
-        ("Participação em palestras como ouvinte", "Extensão", 60.0),
-        ("Participação como palestrante ou instrutor em minicurso e oficina", "Extensão", 40.0),
-        ("Participação em congressos, seminários, simpósio, ciclo de conferências, debate, workshop, jornada, oficina e fórum", "Extensão", 40.0),
-        ("Visita técnica orientada (que não faça parte da carga horária regular)", "Extensão", 15.0),
-        ("Participação em projetos de extensão", "Extensão", 90.0),
-        ("Participação em cursos de extensão", "Extensão", 30.0),
-        ("Participação como Presidente ou Diretor da Empresa Júnior", "Extensão", 90.0),
-        ("Participação como membro da Empresa Júnior", "Extensão", 60.0),
-        ("Participação em atividades acadêmicas ou comunitário-voluntárias oferecidas pelo curso", "Extensão", 30.0),
+        (
+            "Participação em palestras como ouvinte", 
+            "Extensão", 
+            "1 hora por hora realizada", 
+            60.0, 
+            "Declaração de participação emitida pela comissão organizadora"
+        ),
+        (
+            "Participação como palestrante ou instrutor em minicurso e oficina", 
+            "Extensão", 
+            "1 hora por hora realizada", 
+            40.0, 
+            "Declaração de participação emitida pela comissão organizadora"
+        ),
+        (
+            "Participação em congressos, seminários, simpósio, ciclo de conferências, debate, workshop, jornada, oficina e fórum", 
+            "Extensão", 
+            "1 hora por hora realizada", 
+            40.0, 
+            "Certificado de participação emitido pela comissão organizadora"
+        ),
+        (
+            "Visita técnica orientada (que não faça parte da carga horária regular)", 
+            "Extensão", 
+            "3 horas por visita", 
+            15.0, 
+            "Declaração de participação e relatório assinado"
+        ),
+        (
+            "Participação em projetos de extensão", 
+            "Extensão", 
+            "Até 30 horas por projeto", 
+            90.0, 
+            "Declaração de participação emitida pela Coordenação de Extensão"
+        ),
+        (
+            "Participação em cursos de extensão", 
+            "Extensão", 
+            "1 hora por hora realizada", 
+            30.0, 
+            "Certificado de participação emitido pela Coordenação de Extensão"
+        ),
+        (
+            "Participação como Presidente ou Diretor da Empresa Júnior", 
+            "Extensão", 
+            "30 horas por semestre", 
+            90.0, 
+            "Declaração de participação emitida pela Empresa Júnior"
+        ),
+        (
+            "Participação como membro da Empresa Júnior", 
+            "Extensão", 
+            "20 horas por semestre", 
+            60.0, 
+            "Declaração emitida pelo professor responsável pelo projeto"
+        ),
+        (
+            "Participação em atividades acadêmicas ou comunitário-voluntárias oferecidas pelo curso", 
+            "Extensão", 
+            "Até 10 horas por atividade", 
+            30.0, 
+            "Declaração de participação emitida pela comissão organizadora"
+        ),
 
         # --- EIXO: GESTÃO (2 Opções) ---
-        ("Representação de Presidência ou Diretoria do Diretório Acadêmico", "Gestão", 90.0),
-        ("Participação voluntária no Diretório Acadêmico", "Gestão", 60.0)
+        (
+            "Representação de Presidência ou Diretoria do Diretório Acadêmico", 
+            "Gestão", 
+            "30 horas por semestre", 
+            90.0, 
+            "Declaração de participação emitida pelo DA"
+        ),
+        (
+            "Participação voluntária no Diretório Acadêmico", 
+            "Gestão", 
+            "20 horas por semestre", 
+            60.0, 
+            "Declaração de participação emitida pelo DA"
+        )
     ]
-    c.executemany("INSERT INTO parametros VALUES (?, ?, ?)", tabela_oficial_parametros)
+    c.executemany("INSERT INTO parametros VALUES (?, ?, ?, ?, ?)", tabela_oficial_parametros)
 
     # 3. Tabela de Solicitações de AC
     c.execute('''
@@ -236,234 +358,4 @@ else:
     # -----------------------------------------------------------------------------
     if perfil == "Discente":
         st.header("📌 Painel do Discente")
-        tab_submeter, tab_extrato, tab_quadro = st.tabs(["Submeter Solicitação", "Extrato de Horas", "📊 Quadro de Atividades"])
-        
-        with tab_submeter:
-            st.subheader("Formulário de Solicitação de AC")
-            
-            conn = get_connection()
-            df_param = pd.read_sql("SELECT tipo_atividade, dimensao, teto_horas FROM parametros", conn)
-            conn.close()
-            
-            # 1. Seleção da Dimensão (Fora do form para ser instantâneo)
-            dimensoes_disponiveis = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
-            dimensao = st.selectbox("1. Selecione a Dimensão (Eixo):", dimensoes_disponiveis)
-            
-            # 2. Filtro dos tipos de atividade
-            df_filtrado = df_param[df_param["dimensao"] == dimensao]
-            tipos_filtrados = df_filtrado["tipo_atividade"].tolist()
-            
-            with st.form("form_solicitacao"):
-                tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
-                titulo = st.text_input("3. Título / Descrição da Atividade:")
-                ch_solic = st.number_input("4. Carga Horária Solicitada (CH):", min_value=0.0, step=1.0)
-                
-                st.markdown("---")
-                st.markdown("**5. Comprovante da Atividade (Anexe o arquivo PDF e/ou insira o Link):**")
-                arquivo_pdf = st.file_uploader("📎 Anexar Comprovante (Arquivo PDF):", type=["pdf"])
-                link_doc = st.text_input("🔗 OU Link para o Documento Comprovativo:")
-                
-                btn_submeter = st.form_submit_button("Submeter Solicitação")
-                
-                if btn_submeter:
-                    erros = []
-                    if not dimensao:
-                        erros.append("Dimensão da atividade")
-                    if not tipo:
-                        erros.append("Tipo de atividade realizada")
-                    if not titulo.strip():
-                        erros.append("Título da atividade")
-                    if ch_solic <= 0:
-                        erros.append("Carga Horária Solicitada (deve ser maior que zero)")
-                    if not arquivo_pdf and not link_doc.strip():
-                        erros.append("Documento comprobatório (anexe o PDF ou insira o Link)")
-                    
-                    if erros:
-                        st.error(f"⚠️ **Envio Impedido:** É necessário corrigir os seguintes campos: **{', '.join(erros)}**.")
-                    else:
-                        data_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        pdf_nome = arquivo_pdf.name if arquivo_pdf is not None else None
-                        pdf_bytes = arquivo_pdf.read() if arquivo_pdf is not None else None
-                        link_final = link_doc.strip() if link_doc.strip() else None
-                        
-                        conn = get_connection()
-                        c = conn.cursor()
-                        c.execute('''
-                            INSERT INTO solicitacoes 
-                            (nome_aluno, cpf, email, dimensao, tipo_atividade, titulo, ch_solicitada, link_comprovativo, comprovativo_nome, comprovativo_blob, data_solicitacao)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (st.session_state["nome"], st.session_state["cpf"], st.session_state["email"], dimensao, tipo, titulo, ch_solic, link_final, pdf_nome, pdf_bytes, data_atual))
-                        conn.commit()
-                        conn.close()
-                        st.success("✅ **Solicitação gravada com sucesso!** Estado: **Pendente** | Data: " + data_atual)
-
-        with tab_extrato:
-            st.subheader("Extrato de Saldo do Discente")
-            conn = get_connection()
-            df_aluno = pd.read_sql_query("SELECT id, dimensao, tipo_atividade, titulo, ch_solicitada, ch_aprovada, ch_maxima_atingida, status, justificativa, registado_siga FROM solicitacoes WHERE cpf = ?", conn, params=(st.session_state["cpf"],))
-            conn.close()
-            
-            if not df_aluno.empty:
-                st.dataframe(df_aluno, use_container_width=True)
-                total_aprovado = df_aluno["ch_aprovada"].sum()
-                st.metric(label="Total de Carga Horária Aprovada", value=f"{total_aprovado} horas")
-            else:
-                st.info("Nenhuma solicitação cadastrada até o momento.")
-
-        with tab_quadro:
-            st.subheader("📋 Quadro Geral de Atividades e Limites de Horas (Regulamento)")
-            conn = get_connection()
-            df_quadro = pd.read_sql_query(
-                "SELECT dimensao AS 'Dimensão (Eixo)', tipo_atividade AS 'Tipo de Atividade', teto_horas AS 'Teto Máximo (Horas)' FROM parametros ORDER BY dimensao, tipo_atividade", 
-                conn
-            )
-            conn.close()
-            st.dataframe(df_quadro, use_container_width=True, hide_index=True)
-
-    # -----------------------------------------------------------------------------
-    # PAINEL DE AVALIAÇÃO DO DOCENTE / AVALIADOR
-    # -----------------------------------------------------------------------------
-    elif perfil == "Docente/Avaliador":
-        st.header("📋 Painel de Avaliação do Docente / Avaliador")
-        tab_avaliar, tab_quadro_eval = st.tabs(["Avaliar Solicitações", "📊 Consulta de Atividades"])
-        
-        with tab_avaliar:
-            conn = get_connection()
-            df_pendentes = pd.read_sql_query("SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_solicitada, link_comprovativo, comprovativo_nome, data_solicitacao FROM solicitacoes WHERE status = 'Pendente'", conn)
-            conn.close()
-            
-            if df_pendentes.empty:
-                st.success("Nenhuma solicitação pendente para avaliação no momento.")
-            else:
-                st.subheader("Solicitações Pendentes de Avaliação")
-                st.dataframe(df_pendentes[["id", "nome_aluno", "cpf", "dimensao", "tipo_atividade", "titulo", "ch_solicitada", "comprovativo_nome", "data_solicitacao"]], use_container_width=True)
-                
-                id_sel = st.number_input("Informe o ID da Solicitação para Avaliar:", min_value=1, step=1)
-                solic = df_pendentes[df_pendentes["id"] == id_sel]
-                
-                if not solic.empty:
-                    dados = solic.iloc[0]
-                    st.markdown("---")
-                    st.markdown(f"### Avaliando Processo #{dados['id']} - Aluno: {dados['nome_aluno']}")
-                    st.write(f"**Dimensão:** {dados['dimensao']} | **Tipo:** {dados['tipo_atividade']}")
-                    st.write(f"**Título:** {dados['titulo']} | **CH Solicitada:** {dados['ch_solicitada']}h")
-                    
-                    conn = get_connection()
-                    c = conn.cursor()
-                    c.execute("SELECT comprovativo_nome, comprovativo_blob FROM solicitacoes WHERE id = ?", (id_sel,))
-                    blob_row = c.fetchone()
-                    
-                    st.markdown("**Documentação Comprobatória:**")
-                    if dados['link_comprovativo']:
-                        st.markdown(f"🔗 **Link Externo:** [{dados['link_comprovativo']}]({dados['link_comprovativo']})")
-                    
-                    if blob_row and blob_row[1]:
-                        nome_arquivo = blob_row[0] if blob_row[0] else f"comprovante_{id_sel}.pdf"
-                        st.download_button(
-                            label=f"📄 Baixar PDF Anexado ({nome_arquivo})",
-                            data=blob_row[1],
-                            file_name=nome_arquivo,
-                            mime="application/pdf"
-                        )
-                    elif not dados['link_comprovativo']:
-                        st.warning("Nenhum comprovante anexado.")
-                    
-                    c.execute("SELECT teto_horas FROM parametros WHERE tipo_atividade = ?", (dados['tipo_atividade'],))
-                    res_teto = c.fetchone()
-                    conn.close()
-                    
-                    teto_atividade = res_teto[0] if res_teto else 20.0
-                    st.info(f"ℹ️ **Teto Máximo Configurado para esta atividade:** {teto_atividade} horas.")
-                    
-                    with st.form("form_avaliacao"):
-                        decisao = st.radio("Ação do Avaliador:", ["Aprovar", "Indeferir"])
-                        ch_informada = st.number_input("Carga Horária Aprovada (CH):", min_value=0.0, max_value=float(dados['ch_solicitada']), step=1.0)
-                        justificativa = st.text_area("Justificativa da Avaliação (Obrigatória para indeferimentos ou 0h):")
-                        
-                        btn_confirmar_eval = st.form_submit_button("Guardar Avaliação")
-                        
-                        if btn_confirmar_eval:
-                            if (decisao == "Indeferir" or ch_informada == 0) and not justificativa.strip():
-                                st.error("🚫 **Gravação Bloqueada:** Quando a CH aprovada for 0 horas (ou em caso de indeferimento), o preenchimento da justificativa é obrigatório!")
-                            else:
-                                ch_final = 0.0
-                                ch_max_atingida = "Não"
-                                nuevo_status = "Indeferido"
-                                
-                                if decisao == "Aprovar":
-                                    nuevo_status = "Aprovado"
-                                    if ch_informada >= teto_atividade or dados['ch_solicitada'] >= teto_atividade:
-                                        ch_final = min(ch_informada, teto_atividade)
-                                        ch_max_atingida = "Sim"
-                                        st.warning(f"⚠️ **Teto Atingido:** O limite de {teto_atividade}h da atividade foi aplicado. Indicador 'CH máxima atingida' marcado como **Sim**.")
-                                    else:
-                                        ch_final = ch_informada
-                                
-                                conn = get_connection()
-                                c = conn.cursor()
-                                c.execute('''
-                                    UPDATE solicitacoes 
-                                    SET ch_aprovada = ?, ch_maxima_atingida = ?, status = ?, nome_avaliador = ?, justificativa = ?
-                                    WHERE id = ?
-                                ''', (ch_final, ch_max_atingida, nuevo_status, st.session_state["nome"], justificativa, id_sel))
-                                conn.commit()
-                                conn.close()
-                                st.success(f"✅ Processo #{id_sel} avaliado como '{nuevo_status}' com sucesso!")
-                                st.rerun()
-
-        with tab_quadro_eval:
-            st.subheader("📋 Tabela de Consulta do Regulamento de Atividades")
-            conn = get_connection()
-            df_quadro = pd.read_sql_query(
-                "SELECT dimensao AS 'Dimensão (Eixo)', tipo_atividade AS 'Tipo de Atividade', teto_horas AS 'Teto Máximo (Horas)' FROM parametros ORDER BY dimensao, tipo_atividade", 
-                conn
-            )
-            conn.close()
-            st.dataframe(df_quadro, use_container_width=True, hide_index=True)
-
-    # -----------------------------------------------------------------------------
-    # PAINEL DO TÉCNICO ADMINISTRATIVO
-    # -----------------------------------------------------------------------------
-    elif perfil == "Técnico Administrativo":
-        st.header("⚙️ Painel do Técnico Administrativo")
-        
-        conn = get_connection()
-        df_avaliados = pd.read_sql_query("SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, ch_aprovada, status, registado_siga FROM solicitacoes WHERE status IN ('Aprovado', 'Indeferido')", conn)
-        conn.close()
-        
-        if df_avaliados.empty:
-            st.info("Nenhum processo avaliado pendente de registro no SIG@.")
-        else:
-            st.subheader("Processos Avaliados para Lançamento no SIG@")
-            st.dataframe(df_avaliados, use_container_width=True)
-            
-            st.markdown("---")
-            st.subheader("Confirmar Lançamento no Sistema Acadêmico Oficial (SIG@)")
-            
-            with st.form("form_siga"):
-                id_processo = st.number_input("Informe o ID da Solicitação Avaliada:", min_value=1, step=1)
-                confirmar_siga = st.checkbox("Confirmar: Registrado no SIG@?")
-                
-                btn_siga = st.form_submit_button("Confirmar Integração no SIG@")
-                
-                if btn_siga:
-                    if not confirmar_siga:
-                        st.warning("Marque a opção 'Registrado no SIG@?' para confirmar a finalização do processo.")
-                    else:
-                        conn = get_connection()
-                        c = conn.cursor()
-                        c.execute('''
-                            UPDATE solicitacoes 
-                            SET registado_siga = 'Sim', status = 'Concluído'
-                            WHERE id = ? AND status IN ('Aprovado', 'Indeferido')
-                        ''', (id_processo,))
-                        linhas_afetadas = c.rowcount
-                        conn.commit()
-                        conn.close()
-                        
-                        if linhas_afetadas > 0:
-                            st.success(f"✅ **Processo #{id_processo} finalizado com sucesso!** Estado atualizado para **Concluído**.")
-                            st.rerun()
-                        else:
-                            st.error(f"Solicitação #{id_processo} não encontrada ou ainda não avaliada pelo docente.")
+        tab_submeter, tab_extrato, tab_quadro = st.
