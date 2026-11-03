@@ -367,7 +367,7 @@ else:
             df_param = pd.read_sql("SELECT tipo_atividade, dimensao, ch_por_atividade, ch_maxima_total, doc_comprovatorio FROM parametros", conn)
             conn.close()
             
-            # 1. Seleção da Dimensão (Eixo)
+            # 1. Seleção da Dimensão (Eixo) - Fora do formulário para reatividade
             dimensoes_disponiveis = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
             dimensao = st.selectbox("1. Selecione a Dimensão (Eixo):", dimensoes_disponiveis)
             
@@ -375,19 +375,20 @@ else:
             df_filtrado = df_param[df_param["dimensao"] == dimensao]
             tipos_filtrados = df_filtrado["tipo_atividade"].tolist()
             
-            with st.form("form_solicitacao"):
-                tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
-                
-                # Exibe detalhes e limites da atividade selecionada
-                if tipo:
-                    row_info = df_filtrado[df_filtrado["tipo_atividade"] == tipo].iloc[0]
-                    st.info(f"""
-                    📌 **Regras de Carga Horária:**
-                    * **Teto por Atividade/Item:** {row_info['ch_por_atividade']}
-                    * **Teto Máximo Geral Acumulado:** {row_info['ch_maxima_total']} horas
-                    * **Documento Exigido:** {row_info['doc_comprovatorio']}
-                    """)
+            # 3. Seleção do Tipo de Atividade - FORA do formulário (reatividade instantânea)
+            tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
+            
+            # Exibe os dois tetos e documentos da atividade selecionada em tempo real
+            if tipo:
+                row_info = df_filtrado[df_filtrado["tipo_atividade"] == tipo].iloc[0]
+                st.info(f"""
+                📌 **Regras da Atividade Selecionada:**
+                * **Teto por Atividade/Item:** {row_info['ch_por_atividade']}
+                * **Teto Máximo Geral Acumulado:** {row_info['ch_maxima_total']} horas
+                * **Documento Exigido:** {row_info['doc_comprovatorio']}
+                """)
 
+            with st.form("form_solicitacao"):
                 titulo = st.text_input("3. Título / Descrição da Atividade:")
                 ch_solic = st.number_input("4. Carga Horária Solicitada (CH):", min_value=0.0, step=1.0)
                 
