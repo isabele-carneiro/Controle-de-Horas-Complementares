@@ -10,8 +10,7 @@ st.set_page_config(page_title="Sistema de Controle de Atividades Complementares"
 def get_connection():
     return sqlite3.connect("banco.db", check_same_thread=False)
 
-# Inicialização executada APENAS UMA VEZ na subida do servidor (evita travamentos)
-@st.cache_resource
+# Inicialização e carregamento da Tabela Oficial de Parâmetros
 def init_db():
     conn = get_connection()
     c = conn.cursor()
@@ -27,9 +26,10 @@ def init_db():
         )
     """)
     
-    # 2. Tabela de Parâmetros (Cria apenas se não existir)
+    # 2. Tabela de Parâmetros com os DOIS Tetos + Documento Comprobatório
+    c.execute("DROP TABLE IF EXISTS parametros")
     c.execute("""
-        CREATE TABLE IF NOT EXISTS parametros (
+        CREATE TABLE parametros (
             tipo_atividade TEXT PRIMARY KEY,
             dimensao TEXT,
             ch_por_atividade TEXT,
@@ -38,39 +38,157 @@ def init_db():
         )
     """)
     
-    # Preenche os parâmetros apenas se a tabela estiver vazia
-    c.execute("SELECT COUNT(*) FROM parametros")
-    if c.fetchone()[0] == 0:
-        tabela_oficial_parametros = [
-            # --- EIXO: ENSINO ---
-            ("Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES", "Ensino", "Até 15 horas por disciplina", 45.0, "Histórico escolar e ementa da disciplina"),
-            ("Cursos de língua estrangeira em instituições credenciadas com aproveitamento", "Ensino", "Até 10 horas por curso", 20.0, "Certificado de conclusão"),
-            ("Cursos livres relacionados à área de graduação em instituições de ensino com aproveitamento", "Ensino", "Até 10 horas por curso", 30.0, "Certificado de conclusão"),
-            ("Monitoria realizada na FCAP em disciplinas teóricas ou práticas", "Ensino", "15 horas por monitoria/semestre", 45.0, "Certificado de participação emitido pela coordenação responsável"),
-            ("Estágio não curricular", "Ensino", "1 hora por hora realizada", 40.0, "Contrato do estágio e relatório de atividades"),
-            ("Participação em projetos de ensino", "Ensino", "Até 30 horas por projeto", 90.0, "Declaração de participação emitida pela coordenação responsável"),
-            
-            # --- EIXO: PESQUISA ---
-            ("Participação em projetos de iniciação científica", "Pesquisa", "Até 30 horas por projeto", 90.0, "Declaração de participação emitida pela Coordenação de Pesquisa"),
-            ("Publicação de artigos completos em jornais, revistas científicas e anais de eventos", "Pesquisa", "20 horas por artigo", 80.0, "Cópia do artigo na plataforma"),
-            ("Apresentação de trabalho em evento científico com publicação", "Pesquisa", "15 horas por trabalho", 90.0, "Certificado de participação e cópia do trabalho"),
-            
-            # --- EIXO: EXTENSÃO ---
-            ("Participação em palestras como ouvinte", "Extensão", "1 hora por hora realizada", 60.0, "Declaração de participação emitida pela comissão organizadora"),
-            ("Participação como palestrante ou instrutor em minicurso e oficina", "Extensão", "1 hora por hora realizada", 40.0, "Declaração de participação emitida pela comissão organizadora"),
-            ("Participação em congressos, seminários, simpósio, ciclo de conferências, debate, workshop, jornada, oficina e fórum", "Extensão", "1 hora por hora realizada", 40.0, "Certificado de participação emitido pela comissão organizadora"),
-            ("Visita técnica orientada (que não faça parte da carga horária regular)", "Extensão", "3 horas por visita", 15.0, "Declaração de participação e relatório assinado"),
-            ("Participação em projetos de extensão", "Extensão", "Até 30 horas por projeto", 90.0, "Declaração de participação emitida pela Coordenação de Extensão"),
-            ("Participação em cursos de extensão", "Extensão", "1 hora por hora realizada", 30.0, "Certificado de participação emitido pela Coordenação de Extensão"),
-            ("Participação como Presidente ou Diretor da Empresa Júnior", "Extensão", "30 horas por semestre", 90.0, "Declaração de participação emitida pela Empresa Júnior"),
-            ("Participação como membro da Empresa Júnior", "Extensão", "20 horas por semestre", 60.0, "Declaração emitida pelo professor responsável pelo projeto"),
-            ("Participação em atividades acadêmicas ou comunitário-voluntárias oferecidas pelo curso", "Extensão", "Até 10 horas por atividade", 30.0, "Declaração de participação emitida pela comissão organizadora"),
-            
-            # --- EIXO: GESTÃO ---
-            ("Representação de Presidência ou Diretoria do Diretório Acadêmico", "Gestão", "30 horas por semestre", 90.0, "Declaração de participação emitida pelo DA"),
-            ("Participação voluntária no Diretório Acadêmico", "Gestão", "20 horas por semestre", 60.0, "Declaração de participação emitida pelo DA")
-        ]
-        c.executemany("INSERT INTO parametros VALUES (?, ?, ?, ?, ?)", tabela_oficial_parametros)
+    # Cadastro completo das 20 atividades com Tetos Individuais e Tetos Acumulados Gerais
+    tabela_oficial_parametros = [
+        # --- EIXO: ENSINO (6 Opções) ---
+        (
+            "Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES", 
+            "Ensino", 
+            "Até 15 horas por disciplina", 
+            45.0, 
+            "Histórico escolar e ementa da disciplina"
+        ),
+        (
+            "Cursos de língua estrangeira em instituições credenciadas com aproveitamento", 
+            "Ensino", 
+            "Até 10 horas por curso", 
+            20.0, 
+            "Certificado de conclusão"
+        ),
+        (
+            "Cursos livres relacionados à área de graduação em instituições de ensino com aproveitamento", 
+            "Ensino", 
+            "Até 10 horas por curso", 
+            30.0, 
+            "Certificado de conclusão"
+        ),
+        (
+            "Monitoria realizada na FCAP em disciplinas teóricas ou práticas", 
+            "Ensino", 
+            "15 horas por monitoria/semestre", 
+            45.0, 
+            "Certificado de participação emitido pela coordenação responsável"
+        ),
+        (
+            "Estágio não curricular", 
+            "Ensino", 
+            "1 hora por hora realizada", 
+            40.0, 
+            "Contrato do estágio e relatório de atividades"
+        ),
+        (
+            "Participação em projetos de ensino", 
+            "Ensino", 
+            "Até 30 horas por projeto", 
+            90.0, 
+            "Declaração de participação emitida pela coordenação responsável"
+        ),
+
+        # --- EIXO: PESQUISA (3 Opções) ---
+        (
+            "Participação em projetos de iniciação científica", 
+            "Pesquisa", 
+            "Até 30 horas por projeto", 
+            90.0, 
+            "Declaração de participação emitida pela Coordenação de Pesquisa"
+        ),
+        (
+            "Publicação de artigos completos em jornais, revistas científicas e anais de eventos", 
+            "Pesquisa", 
+            "20 horas por artigo", 
+            80.0, 
+            "Cópia do artigo na plataforma"
+        ),
+        (
+            "Apresentação de trabalho em evento científico com publicação", 
+            "Pesquisa", 
+            "15 horas por trabalho", 
+            90.0, 
+            "Certificado de participação e cópia do trabalho"
+        ),
+
+        # --- EIXO: EXTENSÃO (9 Opções) ---
+        (
+            "Participação em palestras como ouvinte", 
+            "Extensão", 
+            "1 hora por hora realizada", 
+            60.0, 
+            "Declaração de participação emitida pela comissão organizadora"
+        ),
+        (
+            "Participação como palestrante ou instrutor em minicurso e oficina", 
+            "Extensão", 
+            "1 hora por hora realizada", 
+            40.0, 
+            "Declaração de participação emitida pela comissão organizadora"
+        ),
+        (
+            "Participação em congressos, seminários, simpósio, ciclo de conferências, debate, workshop, jornada, oficina e fórum", 
+            "Extensão", 
+            "1 hora por hora realizada", 
+            40.0, 
+            "Certificado de participação emitido pela comissão organizadora"
+        ),
+        (
+            "Visita técnica orientada (que não faça parte da carga horária regular)", 
+            "Extensão", 
+            "3 horas por visita", 
+            15.0, 
+            "Declaração de participação e relatório assinado"
+        ),
+        (
+            "Participação em projetos de extensão", 
+            "Extensão", 
+            "Até 30 horas por projeto", 
+            90.0, 
+            "Declaração de participação emitida pela Coordenação de Extensão"
+        ),
+        (
+            "Participação em cursos de extensão", 
+            "Extensão", 
+            "1 hora por hora realizada", 
+            30.0, 
+            "Certificado de participação emitido pela Coordenação de Extensão"
+        ),
+        (
+            "Participação como Presidente ou Diretor da Empresa Júnior", 
+            "Extensão", 
+            "30 horas por semestre", 
+            90.0, 
+            "Declaração de participação emitida pela Empresa Júnior"
+        ),
+        (
+            "Participação como membro da Empresa Júnior", 
+            "Extensão", 
+            "20 horas por semestre", 
+            60.0, 
+            "Declaração emitida pelo professor responsável pelo projeto"
+        ),
+        (
+            "Participação em atividades acadêmicas ou comunitário-voluntárias oferecidas pelo curso", 
+            "Extensão", 
+            "Até 10 horas por atividade", 
+            30.0, 
+            "Declaração de participação emitida pela comissão organizadora"
+        ),
+
+        # --- EIXO: GESTÃO (2 Opções) ---
+        (
+            "Representação de Presidência ou Diretoria do Diretório Acadêmico", 
+            "Gestão", 
+            "30 horas por semestre", 
+            90.0, 
+            "Declaração de participação emitida pelo DA"
+        ),
+        (
+            "Participação voluntária no Diretório Acadêmico", 
+            "Gestão", 
+            "20 horas por semestre", 
+            60.0, 
+            "Declaração de participação emitida pelo DA"
+        )
+    ]
+    c.executemany("INSERT INTO parametros VALUES (?, ?, ?, ?, ?)", tabela_oficial_parametros)
 
     # 3. Tabela de Solicitações de AC
     c.execute("""
@@ -275,7 +393,7 @@ else:
             # 3. Seleção do Tipo de Atividade - FORA do formulário
             tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
             
-            # Exibe os dois tetos e documentos da atividade selecionada em tempo real
+            # Exibe os dois tetos e documentos da atividade selecionada
             if tipo:
                 row_info = df_filtrado[df_filtrado["tipo_atividade"] == tipo].iloc[0]
                 st.info(f"""
@@ -581,3 +699,5 @@ else:
                             st.rerun()
                         else:
                             st.error(f"Solicitação #{id_processo} não encontrada ou ainda não avaliada pelo docente.")
+
+
