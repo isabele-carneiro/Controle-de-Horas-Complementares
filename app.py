@@ -259,7 +259,7 @@ def carregar_horas_acumuladas_por_eixo(cpf_aluno):
     query = """
         SELECT dimensao, SUM(ch_aprovada) as total_aprovado 
         FROM solicitacoes 
-        WHERE cpf = ? AND status IN ('Aprovado', 'Concluído') 
+        WHERE cpf = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Concluído') 
         GROUP BY dimensao
     """
     df = pd.read_sql(query, conn, params=(cpf_aluno,))
@@ -302,7 +302,7 @@ def carregar_solicitacoes_avaliadas():
     query = """
         SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, ch_aprovada, status, registado_siga, data_solicitacao 
         FROM solicitacoes 
-        WHERE status IN ('Aprovado', 'Indeferido') 
+        WHERE status IN ('Aprovado', 'Aprovado Parcialmente', 'Indeferido', 'Negado') 
         ORDER BY id DESC
     """
     df = pd.read_sql_query(query, conn)
@@ -566,7 +566,7 @@ else:
                 st.markdown("### 📊 Balanço e Validação de Requisitos por Eixo")
                 st.caption("📌 Regulamento: O estudante deve acumular horas em pelo menos 2 eixos diferentes, computando no máximo 100 horas por eixo.")
                 
-                df_aprovadas = df_aluno[df_aluno["status"].isin(["Aprovado", "Concluído"])]
+                df_aprovadas = df_aluno[df_aluno["status"].isin(["Aprovado", "Aprovado Parcialmente", "Concluído"])]
                 
                 eixos_cadastrados = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
                 resumo_eixos = []
@@ -663,7 +663,7 @@ else:
                     # Consulta Saldo Atual do Aluno no Eixo
                     c.execute("""
                         SELECT SUM(ch_aprovada) FROM solicitacoes 
-                        WHERE cpf = ? AND dimensao = ? AND status IN ('Aprovado', 'Concluído') AND id != ?
+                        WHERE cpf = ? AND dimensao = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Concluído') AND id != ?
                     """, (dados['cpf'], dados['dimensao'], id_sel))
                     res_eixo = c.fetchone()
                     saldo_eixo_aluno = res_eixo[0] if res_eixo and res_eixo[0] else 0.0
@@ -707,33 +707,57 @@ else:
 
                     # Form de Decisão do Avaliador
                     with st.form("form_avaliacao_docente"):
-                        decisao = st.radio("Parecer do Avaliador:", ["Aprovar", "Indeferir"])
-                        ch_informada = st.number_input(
-                            "Carga Horária Efetivamente Aprovada (CH):", 
-                            min_value=0.0, 
-                            max_value=float(dados['ch_solicitada']), 
-                            step=1.0
+                        decisao = st.radio(
+                            "Parecer do Avaliador:", 
+                            ["Aprovado", "Aprovado Parcialmente", "Negado"],
+                            help="Selecione 'Aprovado Parcialmente' ou 'Negado' caso o valor seja reduzido por limites ou não atenda aos requisitos."
                         )
-                        justificativa = st.text_area("Justificativa Detalhada (Obrigatória se CH = 0h ou em caso de Indeferimento):")
+                        
+                        if decisao == "Aprovado":
+                            # No Aprovado total, sugere a CH total solicitada (limitada ao teto se ultrapassar)
+                            ch_sugerida = min(float(dados['ch_solicitada']), teto_item)
+                            ch_informada = st.number_input(
+                                "Carga Horária Aprovada (CH):", 
+                                min_value=0.0, 
+                                max_value=float(dados['ch_solicitada']), 
+                                value=float(ch_sugerida),
+                                step=1.0
+                            )
+                            justificativa = st.text_area("Justificativa / Observações (Opcional):")
+                        elif decisao == "Aprovado Parcialmente":
+                            ch_informada = st.number_input(
+                                "Carga Horária Aprovada Parcialmente (CH):", 
+                                min_value=0.1, 
+                                max_value=float(dados['ch_solicitada']), 
+                                value=float(min(float(dados['ch_solicitada']), teto_item)),
+                                step=1.0
+                            )
+                            justificativa = st.text_area("Justificativa Obrigatória (Informe o motivo pelo qual o total não foi aprovado, ex: aplicação de limites do regulamento):")
+                        else:  # Negado
+                            ch_informada = 0.0
+                            st.info("Carga Horária Aprovada definida como **0.0 horas**.")
+                            justificativa = st.text_area("Justificativa Obrigatória para Indeferimento/Negativa:")
                         
                         btn_salvar_eval = st.form_submit_button("💾 Gravar Avaliação no Sistema")
                         
                         if btn_salvar_eval:
-                            if (decisao == "Indeferir" or ch_informada == 0) and not justificativa.strip():
-                                st.error("🚫 **Gravação Bloqueada:** A justificativa é obrigatória quando a CH aprovada for 0h ou quando o parecer for 'Indeferir'!")
+                            if decisao in ["Aprovado Parcialmente", "Negado"] and not justificativa.strip():
+                                st.error("🚫 **Gravação Bloqueada:** A justificativa é **obrigatória** para os pareceres 'Aprovado Parcialmente' e 'Negado'!")
                             else:
-                                ch_final = 0.0
+                                ch_final = ch_informada
                                 ch_max_atingida = "Não"
-                                status_final = "Indeferido"
+                                status_final = decisao
                                 
-                                if decisao == "Aprovar":
-                                    status_final = "Aprovado"
+                                if decisao == "Aprovado":
                                     if ch_informada >= teto_item or dados['ch_solicitada'] >= teto_item:
                                         ch_final = min(ch_informada, teto_item)
                                         ch_max_atingida = "Sim"
                                         st.warning(f"⚠️ **Teto Aplicado:** A carga horária foi ajustada para o limite máximo de {teto_item}h da atividade.")
-                                    else:
-                                        ch_final = ch_informada
+                                elif decisao == "Aprovado Parcialmente":
+                                    if ch_informada >= teto_item:
+                                        ch_max_atingida = "Sim"
+                                elif decisao == "Negado":
+                                    ch_final = 0.0
                                 
                                 conn = get_connection()
                                 c = conn.cursor()
@@ -784,7 +808,7 @@ else:
                         c.execute("""
                             UPDATE solicitacoes 
                             SET registado_siga = 'Sim', status = 'Concluído'
-                            WHERE id = ? AND status IN ('Aprovado', 'Indeferido')
+                            WHERE id = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Indeferido', 'Negado')
                         """, (id_processo,))
                         linhas_afetadas = c.rowcount
                         conn.commit()
