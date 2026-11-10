@@ -563,12 +563,19 @@ else:
                     
                     st.markdown("### 📄 Documentação Comprobatória para Análise")
                     
-                    # 1. VISUALIZAÇÃO DE LINK EXTERNO (Abre em Nova Guia)
+                    # 1. LINK EXTERNO -> Botão HTML configurado com target="_blank"
                     if dados['link_comprovativo']:
                         link_url = dados['link_comprovativo']
-                        st.markdown(f"🔗 **Link Externo Informado:** [{link_url}]({link_url}) *(Clique para abrir em nova guia)*")
+                        st.markdown(
+                            f'<a href="{link_url}" target="_blank" style="text-decoration: none;">'
+                            f'<button style="background-color: #1E293B; color: #38BDF8; border: 1px solid #38BDF8; '
+                            f'padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px;">'
+                            f'🔗 Abrir Link Comprovativo em Nova Guia ↗'
+                            f'</button></a>',
+                            unsafe_allow_html=True
+                        )
                     
-                    # 2. VISUALIZAÇÃO DE PDF EMBUTIDO NA TELA (Sem Obrigação de Download)
+                    # 2. ARQUIVO PDF -> Link/Botão HTML com target="_blank" via Data URI
                     if blob_row and blob_row[1]:
                         pdf_bytes = blob_row[1]
                         nome_pdf = blob_row[0] if blob_row[0] else f"comprovante_{id_sel}.pdf"
@@ -576,10 +583,15 @@ else:
                         
                         st.markdown(f"**Arquivo Anexado:** `{nome_pdf}`")
                         
-                        # Container expansível com leitor de PDF integrado
-                        with st.expander("👁️ Visualizar Documento PDF Integrado (Sem Baixar)", expanded=True):
-                            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
-                            st.markdown(pdf_display, unsafe_allow_html=True)
+                        pdf_href = f"data:application/pdf;base64,{base64_pdf}"
+                        st.markdown(
+                            f'<a href="{pdf_href}" target="_blank" style="text-decoration: none;">'
+                            f'<button style="background-color: #0F172A; color: #38BDF8; border: 1px solid #38BDF8; '
+                            f'padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px;">'
+                            f'📄 Abrir Documento PDF em Nova Guia ↗'
+                            f'</button></a>',
+                            unsafe_allow_html=True
+                        )
                             
                     elif not dados['link_comprovativo']:
                         st.warning("⚠️ Nenhum arquivo ou link de comprovante foi anexado a este processo.")
