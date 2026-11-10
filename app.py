@@ -1,6 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+import os
 from datetime import datetime
 
 # =============================================================================
@@ -20,6 +21,31 @@ def get_connection():
     """Retorna uma conexão ativa com o banco de dados SQLite."""
     return sqlite3.connect("banco.db", check_same_thread=False)
 
+def carregar_usuarios_autorizados():
+    """
+    Lê a planilha 'usuarios_autorizados.csv'. 
+    Caso o arquivo não exista no repositório, cria um DataFrame padrão de exemplo.
+    """
+    caminho_csv = "usuarios_autorizados.csv"
+    if os.path.exists(caminho_csv):
+        try:
+            df = pd.read_csv(caminho_csv, dtype={"cpf": str})
+            df["cpf"] = df["cpf"].astype(str).str.strip().str.zfill(11)
+            df["perfil"] = df["perfil"].astype(str).str.strip()
+            df["nome"] = df["nome"].astype(str).str.strip()
+            return df
+        except Exception as e:
+            st.error(f"Erro ao ler a planilha de autorizados: {e}")
+            return pd.DataFrame(columns=["cpf", "nome", "perfil"])
+    else:
+        # Tabela padrão para testes caso o arquivo CSV ainda não tenha sido enviado
+        dados_exemplo = {
+            "cpf": ["12345678900", "98765432100", "11122233344"],
+            "nome": ["Aluno Exemplo", "Professor Exemplo", "Técnico Exemplo"],
+            "perfil": ["Discente", "Docente/Avaliador", "Técnico Administrativo"]
+        }
+        return pd.DataFrame(dados_exemplo)
+
 def init_db():
     """
     Inicializa a estrutura do banco de dados SQLite.
@@ -28,7 +54,7 @@ def init_db():
     conn = get_connection()
     c = conn.cursor()
     
-    # 1. Tabela de Usuários (Discente, Docente, Técnico)
+    # 1. Tabela de Usuários Registrados com Senha
     c.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             cpf TEXT PRIMARY KEY,
@@ -85,155 +111,35 @@ def init_db():
     if "ch_maxima_atingida" not in colunas_existentes:
         c.execute("ALTER TABLE solicitacoes ADD COLUMN ch_maxima_atingida TEXT DEFAULT 'Não'")
 
-    # Cadastro / Atualização Garantida de todas as 20 Atividades Oficiais do Regulamento
+    # Cadastro / Atualização Garantida das 20 Atividades Oficiais do Regulamento
     tabela_oficial_parametros = [
         # --- EIXO 1: ENSINO (6 Atividades) ---
-        (
-            "Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES",
-            "Ensino",
-            "Até 15 horas por disciplina",
-            45.0,
-            "Histórico escolar e ementa da disciplina"
-        ),
-        (
-            "Cursos de língua estrangeira em instituições credenciadas com aproveitamento",
-            "Ensino",
-            "Até 10 horas por curso",
-            20.0,
-            "Certificado de conclusão"
-        ),
-        (
-            "Cursos livres relacionados à área de graduação em instituições de ensino com aproveitamento",
-            "Ensino",
-            "Até 10 horas por curso",
-            30.0,
-            "Certificado de conclusão"
-        ),
-        (
-            "Monitoria realizada na FCAP em disciplinas teóricas ou práticas",
-            "Ensino",
-            "15 horas por monitoria/semestre",
-            45.0,
-            "Certificado de participação emitido pela coordenação responsável"
-        ),
-        (
-            "Estágio não curricular",
-            "Ensino",
-            "1 hora por hora realizada",
-            40.0,
-            "Contrato do estágio e relatório de atividades"
-        ),
-        (
-            "Participação em projetos de ensino",
-            "Ensino",
-            "Até 30 horas por projeto",
-            90.0,
-            "Declaração de participação emitida pela coordenação responsável"
-        ),
+        ("Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES", "Ensino", "Até 15 horas por disciplina", 45.0, "Histórico escolar e ementa da disciplina"),
+        ("Cursos de língua estrangeira em instituições credenciadas com aproveitamento", "Ensino", "Até 10 horas por curso", 20.0, "Certificado de conclusão"),
+        ("Cursos livres relacionados à área de graduação em instituições de ensino com aproveitamento", "Ensino", "Até 10 horas por curso", 30.0, "Certificado de conclusão"),
+        ("Monitoria realizada na FCAP em disciplinas teóricas ou práticas", "Ensino", "15 horas por monitoria/semestre", 45.0, "Certificado de participação emitido pela coordenação responsável"),
+        ("Estágio não curricular", "Ensino", "1 hora por hora realizada", 40.0, "Contrato do estágio e relatório de atividades"),
+        ("Participação em projetos de ensino", "Ensino", "Até 30 horas por projeto", 90.0, "Declaração de participação emitida pela coordenação responsável"),
 
         # --- EIXO 2: PESQUISA (3 Atividades) ---
-        (
-            "Participação em projetos de iniciação científica",
-            "Pesquisa",
-            "Até 30 horas por projeto",
-            90.0,
-            "Declaração de participação emitida pela Coordenação de Pesquisa"
-        ),
-        (
-            "Publicação de artigos completos em jornais, revistas científicas e anais de eventos",
-            "Pesquisa",
-            "20 horas por artigo",
-            80.0,
-            "Cópia do artigo na plataforma"
-        ),
-        (
-            "Apresentação de trabalho em evento científico com publicação",
-            "Pesquisa",
-            "15 horas por trabalho",
-            90.0,
-            "Certificado de participação e cópia do trabalho"
-        ),
+        ("Participação em projetos de iniciação científica", "Pesquisa", "Até 30 horas por projeto", 90.0, "Declaração de participação emitida pela Coordenação de Pesquisa"),
+        ("Publicação de artigos completos em jornais, revistas científicas e anais de eventos", "Pesquisa", "20 horas por artigo", 80.0, "Cópia do artigo na plataforma"),
+        ("Apresentação de trabalho em evento científico com publicação", "Pesquisa", "15 horas por trabalho", 90.0, "Certificado de participação e cópia do trabalho"),
 
         # --- EIXO 3: EXTENSÃO (9 Atividades) ---
-        (
-            "Participação em palestras como ouvinte",
-            "Extensão",
-            "1 hora por hora realizada",
-            60.0,
-            "Declaração de participação emitida pela comissão organizadora"
-        ),
-        (
-            "Participação como palestrante ou instrutor em minicurso e oficina",
-            "Extensão",
-            "1 hora por hora realizada",
-            40.0,
-            "Declaração de participação emitida pela comissão organizadora"
-        ),
-        (
-            "Participação em congressos, seminários, simpósio, ciclo de conferências, debate, workshop, jornada, oficina e fórum",
-            "Extensão",
-            "1 hora por hora realizada",
-            40.0,
-            "Certificado de participação emitido pela comissão organizadora"
-        ),
-        (
-            "Visita técnica orientada (que não faça parte da carga horária regular)",
-            "Extensão",
-            "3 horas por visita",
-            15.0,
-            "Declaração de participação e relatório assinado"
-        ),
-        (
-            "Participação em projetos de extensão",
-            "Extensão",
-            "Até 30 horas por projeto",
-            90.0,
-            "Declaração de participação emitida pela Coordenação de Extensão"
-        ),
-        (
-            "Participação em cursos de extensão",
-            "Extensão",
-            "1 hora por hora realizada",
-            30.0,
-            "Certificado de participação emitido pela Coordenação de Extensão"
-        ),
-        (
-            "Participação como Presidente ou Diretor da Empresa Júnior",
-            "Extensão",
-            "30 horas por semestre",
-            90.0,
-            "Declaração de participação emitida pela Empresa Júnior"
-        ),
-        (
-            "Participação como membro da Empresa Júnior",
-            "Extensão",
-            "20 horas por semestre",
-            60.0,
-            "Declaração emitida pelo professor responsável pelo projeto"
-        ),
-        (
-            "Participação em atividades acadêmicas ou comunitário-voluntárias oferecidas pelo curso",
-            "Extensão",
-            "Até 10 horas por atividade",
-            30.0,
-            "Declaração de participação emitida pela comissão organizadora"
-        ),
+        ("Participação em palestras como ouvinte", "Extensão", "1 hora por hora realizada", 60.0, "Declaração de participação emitida pela comissão organizadora"),
+        ("Participação como palestrante ou instrutor em minicurso e oficina", "Extensão", "1 hora por hora realizada", 40.0, "Declaração de participação emitida pela comissão organizadora"),
+        ("Participação em congressos, seminários, simpósio, ciclo de conferências, debate, workshop, jornada, oficina e fórum", "Extensão", "1 hora por hora realizada", 40.0, "Certificado de participação emitido pela comissão organizadora"),
+        ("Visita técnica orientada (que não faça parte da carga horária regular)", "Extensão", "3 horas por visita", 15.0, "Declaração de participação e relatório assinado"),
+        ("Participação em projetos de extensão", "Extensão", "Até 30 horas por projeto", 90.0, "Declaração de participação emitida pela Coordenação de Extensão"),
+        ("Participação em cursos de extensão", "Extensão", "1 hora por hora realizada", 30.0, "Certificado de participação emitido pela Coordenação de Extensão"),
+        ("Participação como Presidente ou Diretor da Empresa Júnior", "Extensão", "30 horas por semestre", 90.0, "Declaração de participação emitida pela Empresa Júnior"),
+        ("Participação como membro da Empresa Júnior", "Extensão", "20 horas por semestre", 60.0, "Declaração emitida pelo professor responsável pelo projeto"),
+        ("Participação em atividades acadêmicas ou comunitário-voluntárias oferecidas pelo curso", "Extensão", "Até 10 horas por atividade", 30.0, "Declaração de participação emitida pela comissão organizadora"),
 
         # --- EIXO 4: GESTÃO (2 Atividades) ---
-        (
-            "Representação de Presidência ou Diretoria do Diretório Acadêmico",
-            "Gestão",
-            "30 horas por semestre",
-            90.0,
-            "Declaração de participação emitida pelo DA"
-        ),
-        (
-            "Participação voluntária no Diretório Acadêmico",
-            "Gestão",
-            "20 horas por semestre",
-            60.0,
-            "Declaração de participação emitida pelo DA"
-        )
+        ("Representação de Presidência ou Diretoria do Diretório Acadêmico", "Gestão", "30 horas por semestre", 90.0, "Declaração de participação emitida pelo DA"),
+        ("Participação voluntária no Diretório Acadêmico", "Gestão", "20 horas por semestre", 60.0, "Declaração de participação emitida pelo DA")
     ]
     
     c.executemany("INSERT OR REPLACE INTO parametros VALUES (?, ?, ?, ?, ?)", tabela_oficial_parametros)
@@ -368,57 +274,69 @@ if not st.session_state["logado"]:
                         st.error(f"Erro ao conectar ao banco de dados: {e}")
 
     # -------------------------------------------------------------------------
-    # OPÇÃO 2: PRIMEIRO ACESSO / CADASTRO DE NOVO USUÁRIO
+    # OPÇÃO 2: PRIMEIRO ACESSO COM VALIDAÇÃO NA PLANILHA DE AUTORIZADOS
     # -------------------------------------------------------------------------
     else:
         st.markdown("### Cadastro de Primeiro Acesso")
-        st.info("Preencha todos os campos obrigatórios abaixo para cadastrar seu perfil no sistema.")
+        st.info("Informe seu CPF para validação na lista oficial de usuários autorizados.")
         
-        with st.form("form_primeiro_acesso"):
-            cpf_cad = st.text_input("Número do CPF (Ex: 12345678900):").strip()
-            nome_cad = st.text_input("Nome Completo:").strip()
-            email_cad = st.text_input("E-mail Institucional ou Pessoal:").strip()
-            perfil_cad = st.selectbox(
-                "Perfil de Acesso ao Sistema:",
-                ["Discente", "Docente/Avaliador", "Técnico Administrativo"]
-            )
-            nova_senha = st.text_input("Crie uma Senha:", type="password").strip()
-            confirma_senha = st.text_input("Confirme a Senha:", type="password").strip()
+        df_autorizados = carregar_usuarios_autorizados()
+        
+        cpf_input_cad = st.text_input("Digite seu CPF (Apenas números, ex: 12345678900):", key="input_cpf_cad").strip()
+        
+        if cpf_input_cad:
+            cpf_limpo = cpf_input_cad.zfill(11)
+            autorizado = df_autorizados[df_autorizados["cpf"] == cpf_limpo]
             
-            btn_cadastrar = st.form_submit_button("Cadastrar e Acessar")
-            
-            if btn_cadastrar:
-                if not cpf_cad or not nome_cad or not email_cad or not nova_senha:
-                    st.error("⚠️ Preencha todos os campos obrigatórios antes de prosseguir.")
-                elif nova_senha != confirma_senha:
-                    st.error("⚠️ As senhas digitadas não coincidem! Redigite com atenção.")
-                else:
-                    try:
-                        conn = get_connection()
-                        c = conn.cursor()
-                        c.execute("SELECT senha FROM usuarios WHERE cpf = ?", (cpf_cad,))
-                        existente = c.fetchone()
-                        
-                        if existente and existente[0] is not None and existente[0] != "":
-                            st.warning("⚠️ Este CPF já possui cadastro ativo! Alterne para a opção 'Já tenho cadastro (Login)'.")
-                            conn.close()
+            if autorizado.empty:
+                st.error("🚫 **CPF não autorizado!** O CPF digitado não consta na planilha oficial de alunos/servidores pré-cadastrados. Entre em contato com a coordenação.")
+            else:
+                dados_auth = autorizado.iloc[0]
+                nome_oficial = dados_auth["nome"]
+                perfil_oficial = dados_auth["perfil"]
+                
+                st.success(f"✅ **CPF Autorizado!**")
+                st.info(f"👤 **Nome:** {nome_oficial} | 🛡️ **Perfil Pré-Atribuído:** {perfil_oficial}")
+                
+                with st.form("form_finalizar_cadastro"):
+                    email_cad = st.text_input("Confirme seu E-mail Institucional ou Pessoal:").strip()
+                    nova_senha = st.text_input("Crie uma Senha de Acesso:", type="password").strip()
+                    confirma_senha = st.text_input("Confirme a Senha:", type="password").strip()
+                    
+                    btn_cadastrar = st.form_submit_button("🔒 Cadastrar Senha e Acessar")
+                    
+                    if btn_cadastrar:
+                        if not email_cad or not nova_senha:
+                            st.error("⚠️ Preencha todos os campos obrigatórios.")
+                        elif nova_senha != confirma_senha:
+                            st.error("⚠️ As senhas digitadas não coincidem! Redigite com atenção.")
                         else:
-                            c.execute("""
-                                INSERT OR REPLACE INTO usuarios (cpf, nome, email, senha, perfil)
-                                VALUES (?, ?, ?, ?, ?)
-                            """, (cpf_cad, nome_cad, email_cad, nova_senha, perfil_cad))
-                            conn.commit()
-                            conn.close()
-                            
-                            st.session_state["logado"] = True
-                            st.session_state["cpf"] = cpf_cad
-                            st.session_state["nome"] = nome_cad
-                            st.session_state["email"] = email_cad
-                            st.session_state["perfil"] = perfil_cad
-                            st.success("✅ Cadastro realizado com sucesso! Entrando no sistema...")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar cadastro no banco de dados: {e}")
+                            try:
+                                conn = get_connection()
+                                c = conn.cursor()
+                                c.execute("SELECT senha FROM usuarios WHERE cpf = ?", (cpf_limpo,))
+                                existente = c.fetchone()
+                                
+                                if existente and existente[0] is not None and existente[0] != "":
+                                    st.warning("⚠️ Este CPF já criou uma senha no sistema! Alterne para a opção 'Já tenho cadastro (Login)'.")
+                                    conn.close()
+                                else:
+                                    c.execute("""
+                                        INSERT OR REPLACE INTO usuarios (cpf, nome, email, senha, perfil)
+                                        VALUES (?, ?, ?, ?, ?)
+                                    """, (cpf_limpo, nome_oficial, email_cad, nova_senha, perfil_oficial))
+                                    conn.commit()
+                                    conn.close()
+                                    
+                                    st.session_state["logado"] = True
+                                    st.session_state["cpf"] = cpf_limpo
+                                    st.session_state["nome"] = nome_oficial
+                                    st.session_state["email"] = email_cad
+                                    st.session_state["perfil"] = perfil_oficial
+                                    st.success("✅ Senha cadastrada com sucesso! Entrando no sistema...")
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro ao salvar cadastro no banco de dados: {e}")
 
 # =============================================================================
 # ÁREA RESTRITA - PAINÉIS DE ACORDO COM O PERFIL LOGADO
@@ -714,7 +632,6 @@ else:
                         )
                         
                         if decisao == "Aprovado":
-                            # No Aprovado total, sugere a CH total solicitada (limitada ao teto se ultrapassar)
                             ch_sugerida = min(float(dados['ch_solicitada']), teto_item)
                             ch_informada = st.number_input(
                                 "Carga Horária Aprovada (CH):", 
