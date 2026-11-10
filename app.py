@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import os
+import base64
 from datetime import datetime
 
 # =============================================================================
@@ -38,7 +39,6 @@ def carregar_usuarios_autorizados():
             st.error(f"Erro ao ler a planilha de autorizados: {e}")
             return pd.DataFrame(columns=["cpf", "nome", "perfil"])
     else:
-        # Tabela padrão para testes caso o arquivo CSV ainda não tenha sido enviado
         dados_exemplo = {
             "cpf": ["12345678900", "98765432100", "11122233344"],
             "nome": ["Aluno Exemplo", "Professor Exemplo", "Técnico Exemplo"],
@@ -100,7 +100,6 @@ def init_db():
         )
     """)
     
-    # Garantia de Migração: Adiciona colunas eventualmente ausentes em bancos legados
     c.execute("PRAGMA table_info(solicitacoes)")
     colunas_existentes = [row[1] for row in c.fetchall()]
     
@@ -111,7 +110,6 @@ def init_db():
     if "ch_maxima_atingida" not in colunas_existentes:
         c.execute("ALTER TABLE solicitacoes ADD COLUMN ch_maxima_atingida TEXT DEFAULT 'Não'")
 
-    # Cadastro / Atualização Garantida das 20 Atividades Oficiais do Regulamento
     tabela_oficial_parametros = [
         # --- EIXO 1: ENSINO (6 Atividades) ---
         ("Disciplinas cursadas com aproveitamento satisfatório em outros cursos da IES ou em outras IES", "Ensino", "Até 15 horas por disciplina", 45.0, "Histórico escolar e ementa da disciplina"),
@@ -150,17 +148,15 @@ def init_db():
 init_db()
 
 # =============================================================================
-# FUNÇÕES AUXILIARES DE CONSULTA E NAVEGAÇÃO DO BANCO
+# FUNÇÕES AUXILIARES DE CONSULTA E VISUALIZAÇÃO
 # =============================================================================
 def carregar_parametros():
-    """Carrega todos os parâmetros do regulamento em um DataFrame."""
     conn = get_connection()
     df = pd.read_sql("SELECT tipo_atividade, dimensao, ch_por_atividade, ch_maxima_total, doc_comprovatorio FROM parametros", conn)
     conn.close()
     return df
 
 def carregar_horas_acumuladas_por_eixo(cpf_aluno):
-    """Retorna um dicionário com o total de horas aprovadas/concluídas por eixo do aluno."""
     conn = get_connection()
     query = """
         SELECT dimensao, SUM(ch_aprovada) as total_aprovado 
@@ -175,7 +171,6 @@ def carregar_horas_acumuladas_por_eixo(cpf_aluno):
     return dict(zip(df["dimensao"], df["total_aprovado"]))
 
 def carregar_solicitacoes_aluno(cpf_aluno):
-    """Carrega todas as solicitações registradas para o aluno informado."""
     conn = get_connection()
     query = """
         SELECT id, dimensao, tipo_atividade, titulo, ch_solicitada, ch_aprovada, 
@@ -189,7 +184,6 @@ def carregar_solicitacoes_aluno(cpf_aluno):
     return df
 
 def carregar_solicitacoes_pendentes():
-    """Carrega a lista de solicitações pendentes para avaliação docente."""
     conn = get_connection()
     query = """
         SELECT id, nome_aluno, cpf, email, dimensao, tipo_atividade, titulo, 
@@ -203,7 +197,6 @@ def carregar_solicitacoes_pendentes():
     return df
 
 def carregar_solicitacoes_avaliadas():
-    """Carrega solicitações já avaliadas aguardando lançamento no SIG@."""
     conn = get_connection()
     query = """
         SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, ch_aprovada, status, registado_siga, data_solicitacao 
@@ -239,9 +232,6 @@ if not st.session_state["logado"]:
     
     st.markdown("---")
     
-    # -------------------------------------------------------------------------
-    # OPÇÃO 1: LOGIN DE USUÁRIO JÁ CADASTRADO
-    # -------------------------------------------------------------------------
     if opcao_acesso == "🔑 Já tenho cadastro (Login)":
         st.markdown("### Entrar com CPF e Senha")
         with st.form("form_login"):
@@ -273,15 +263,11 @@ if not st.session_state["logado"]:
                     except Exception as e:
                         st.error(f"Erro ao conectar ao banco de dados: {e}")
 
-    # -------------------------------------------------------------------------
-    # OPÇÃO 2: PRIMEIRO ACESSO COM VALIDAÇÃO NA PLANILHA DE AUTORIZADOS
-    # -------------------------------------------------------------------------
     else:
         st.markdown("### Cadastro de Primeiro Acesso")
         st.info("Informe seu CPF para validação na lista oficial de usuários autorizados.")
         
         df_autorizados = carregar_usuarios_autorizados()
-        
         cpf_input_cad = st.text_input("Digite seu CPF (Apenas números, ex: 12345678900):", key="input_cpf_cad").strip()
         
         if cpf_input_cad:
@@ -295,7 +281,7 @@ if not st.session_state["logado"]:
                 nome_oficial = dados_auth["nome"]
                 perfil_oficial = dados_auth["perfil"]
                 
-                st.success(f"✅ **CPF Autorizado!**")
+                st.success("✅ **CPF Autorizado!**")
                 st.info(f"👤 **Nome:** {nome_oficial} | 🛡️ **Perfil Pré-Atribuído:** {perfil_oficial}")
                 
                 with st.form("form_finalizar_cadastro"):
@@ -342,7 +328,6 @@ if not st.session_state["logado"]:
 # ÁREA RESTRITA - PAINÉIS DE ACORDO COM O PERFIL LOGADO
 # =============================================================================
 else:
-    # Barra Lateral com dados do usuário ativo
     st.sidebar.markdown(f"👤 **Usuário:** {st.session_state['nome']}")
     st.sidebar.markdown(f"🆔 **CPF:** {st.session_state['cpf']}")
     st.sidebar.markdown(f"🛡️ **Perfil:** {st.session_state['perfil']}")
@@ -369,20 +354,15 @@ else:
             "📊 Tabela Completa do Regulamento"
         ])
         
-        # ---------------------------------------------------------------------
-        # ABA 1: SUBMETER NOVA SOLICITAÇÃO
-        # ---------------------------------------------------------------------
         with tab_submeter:
             st.subheader("Formulário de Solicitação de Atividade Complementar")
             
             df_param = carregar_parametros()
             horas_eixo_dict = carregar_horas_acumuladas_por_eixo(st.session_state["cpf"])
             
-            # PASSO 1: Seleção do Eixo / Dimensão (Reativo fora do form)
             dimensoes_disponiveis = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
             dimensao = st.selectbox("1. Selecione o Eixo / Dimensão da Atividade:", dimensoes_disponiveis)
             
-            # Exibe status e saldo de horas no eixo selecionado
             horas_no_eixo = horas_eixo_dict.get(dimensao, 0.0)
             if horas_no_eixo >= 100.0:
                 st.warning(f"⚠️ **Atenção (Teto de Eixo Atingido):** Você já possui **{horas_no_eixo:.1f}h** aprovadas no eixo **{dimensao}**. O regulamento aproveita no máximo **100 horas por eixo**.")
@@ -391,17 +371,14 @@ else:
             else:
                 st.caption(f"ℹ️ Você ainda não possui horas computadas no eixo **{dimensao}**.")
             
-            # PASSO 2: Filtragem das atividades por eixo
             df_filtrado = df_param[df_param["dimensao"] == dimensao]
             tipos_filtrados = df_filtrado["tipo_atividade"].tolist()
             
             if not tipos_filtrados:
                 st.error("Nenhuma atividade encontrada para este eixo. Recarregue a página.")
             else:
-                # PASSO 3: Seleção da atividade (Reativo fora do form)
                 tipo = st.selectbox("2. Selecione o Tipo de Atividade Realizada:", tipos_filtrados)
                 
-                # EXIBIÇÃO INSTANTÂNEA DAS REGRAS E TETOS DA ATIVIDADE SELECIONADA
                 if tipo:
                     row_info = df_filtrado[df_filtrado["tipo_atividade"] == tipo].iloc[0]
                     st.info(f"""
@@ -412,7 +389,6 @@ else:
                     * **Regra do Eixo {dimensao}:** Máximo de 100.0h computadas no curso (mínimo de 2 eixos exigidos).
                     """)
 
-                # PASSO 4: Form para inserção dos dados e upload
                 with st.form("form_solicitacao_aluno"):
                     titulo = st.text_input("3. Título / Descrição Detalhada da Atividade Realizada:")
                     ch_solic = st.number_input("4. Carga Horária Solicitada (CH em horas):", min_value=0.0, step=1.0)
@@ -468,9 +444,6 @@ else:
                             conn.close()
                             st.success(f"✅ **Solicitação enviada com sucesso!** Protocolo registrado em {data_atual}.")
 
-        # ---------------------------------------------------------------------
-        # ABA 2: EXTRATO DE SALDO E AUDITORIA DE REQUISITOS DE INTEGRALIZAÇÃO
-        # ---------------------------------------------------------------------
         with tab_extrato:
             st.subheader("Extrato de Atividades e Integralização Acadêmica")
             
@@ -494,7 +467,7 @@ else:
                 for e in eixos_cadastrados:
                     sub = df_aprovadas[df_aprovadas["dimensao"] == e]
                     horas_brutas = sub["ch_aprovada"].sum() if not sub.empty else 0.0
-                    horas_computadas = min(horas_brutas, 100.0) # Trava de 100h por eixo
+                    horas_computadas = min(horas_brutas, 100.0)
                     
                     if horas_computadas > 0:
                         eixos_com_horas_count += 1
@@ -522,7 +495,6 @@ else:
                 with col_m2:
                     st.metric("Eixos com Horas Válidas", f"{eixos_com_horas_count} de 4 eixos")
                 
-                # Validação de Requisito Multidimensional
                 if eixos_com_horas_count < 2:
                     st.error("🚨 **Requisito Pendente:** O regulamento exige horas computadas em **pelo menos 2 eixos diferentes**. Atualmente você possui horas em apenas 1 eixo.")
                 else:
@@ -530,9 +502,6 @@ else:
             else:
                 st.info("Nenhuma solicitação cadastrada até o momento.")
 
-        # ---------------------------------------------------------------------
-        # ABA 3: QUADRO COMPLETO DE CONSULTA DO REGULAMENTO
-        # ---------------------------------------------------------------------
         with tab_quadro:
             st.subheader("📋 Regulamento Oficial de Atividades Complementares (FCAP)")
             df_quadro = carregar_parametros()
@@ -578,7 +547,6 @@ else:
                     conn = get_connection()
                     c = conn.cursor()
                     
-                    # Consulta Saldo Atual do Aluno no Eixo
                     c.execute("""
                         SELECT SUM(ch_aprovada) FROM solicitacoes 
                         WHERE cpf = ? AND dimensao = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Concluído') AND id != ?
@@ -586,29 +554,37 @@ else:
                     res_eixo = c.fetchone()
                     saldo_eixo_aluno = res_eixo[0] if res_eixo and res_eixo[0] else 0.0
                     
-                    # Consulta Comprovante PDF Anexado
                     c.execute("SELECT comprovativo_nome, comprovativo_blob FROM solicitacoes WHERE id = ?", (id_sel,))
                     blob_row = c.fetchone()
                     
-                    # Consulta Regras do Item
                     c.execute("SELECT ch_por_atividade, ch_maxima_total FROM parametros WHERE tipo_atividade = ?", (dados['tipo_atividade'],))
                     res_param = c.fetchone()
                     conn.close()
                     
-                    st.markdown("**Documentação Comprobatória:**")
-                    if dados['link_comprovativo']:
-                        st.markdown(f"🔗 **Link Informado:** [{dados['link_comprovativo']}]({dados['link_comprovativo']})")
+                    st.markdown("### 📄 Documentação Comprobatória para Análise")
                     
+                    # 1. VISUALIZAÇÃO DE LINK EXTERNO (Abre em Nova Guia)
+                    if dados['link_comprovativo']:
+                        link_url = dados['link_comprovativo']
+                        st.markdown(f"🔗 **Link Externo Informado:** [{link_url}]({link_url}) *(Clique para abrir em nova guia)*")
+                    
+                    # 2. VISUALIZAÇÃO DE PDF EMBUTIDO NA TELA (Sem Obrigação de Download)
                     if blob_row and blob_row[1]:
+                        pdf_bytes = blob_row[1]
                         nome_pdf = blob_row[0] if blob_row[0] else f"comprovante_{id_sel}.pdf"
-                        st.download_button(
-                            label=f"📄 Baixar e Analisar PDF Anexado ({nome_pdf})",
-                            data=blob_row[1],
-                            file_name=nome_pdf,
-                            mime="application/pdf"
-                        )
+                        base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                        
+                        st.markdown(f"**Arquivo Anexado:** `{nome_pdf}`")
+                        
+                        # Container expansível com leitor de PDF integrado
+                        with st.expander("👁️ Visualizar Documento PDF Integrado (Sem Baixar)", expanded=True):
+                            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+                            st.markdown(pdf_display, unsafe_allow_html=True)
+                            
                     elif not dados['link_comprovativo']:
                         st.warning("⚠️ Nenhum arquivo ou link de comprovante foi anexado a este processo.")
+                    
+                    st.markdown("---")
                     
                     teto_item = float(res_param[1]) if res_param else 20.0
                     teto_unitario_desc = res_param[0] if res_param else "N/A"
@@ -623,7 +599,6 @@ else:
                     if saldo_eixo_aluno >= 100.0:
                         st.warning(f"⚠️ **Aviso:** O aluno já atingiu **{saldo_eixo_aluno:.1f}h** no eixo **{dados['dimensao']}**. O regulamento aproveita no máximo **100 horas por eixo**.")
 
-                    # Form de Decisão do Avaliador
                     with st.form("form_avaliacao_docente"):
                         decisao = st.radio(
                             "Parecer do Avaliador:", 
