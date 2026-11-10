@@ -473,11 +473,11 @@ else:
                 cols_mostrar = ["id", "dimensao", "tipo_atividade", "titulo", "ch_solicitada", "ch_aprovada", "status_exibicao", "justificativa", "data_solicitacao"]
                 df_mostrar = df_exibicao[cols_mostrar].rename(columns={
                     "id": "ID",
-                    "dimensao": "Eixo",
+                    "dimensao": "Eixo / Dimensão",
                     "tipo_atividade": "Tipo de Atividade",
                     "titulo": "Título / Descrição",
-                    "ch_solicitada": "CH Solicitada",
-                    "ch_aprovada": "CH Aprovada",
+                    "ch_solicitada": "CH Solicitada (h)",
+                    "ch_aprovada": "CH Aprovada (h)",
                     "status_exibicao": "Status do Processo",
                     "justificativa": "Parecer / Justificativa",
                     "data_solicitacao": "Data da Solicitação"
@@ -538,7 +538,7 @@ else:
             st.subheader("📋 Regulamento Oficial de Atividades Complementares (FCAP)")
             df_quadro = carregar_parametros()
             df_quadro.columns = [
-                "Atividade / Modalidade", 
+                "Tipo de Atividade / Modalidade", 
                 "Eixo / Dimensão", 
                 "Carga Horária por Item (Teto Unitário)", 
                 "Carga Horária Máxima Total (Teto Geral)", 
@@ -551,7 +551,11 @@ else:
     # =========================================================================
     elif perfil == "Docente/Avaliador":
         st.header("📋 Painel de Avaliação do Docente / Avaliador")
-        tab_eval, tab_ref = st.tabs(["Avaliar Solicitações Pendentes", "📊 Consulta do Regulamento"])
+        tab_eval, tab_historico_siga_doc, tab_ref = st.tabs([
+            "Avaliar Solicitações Pendentes", 
+            "🔍 Consultar Horas Confirmadas no SIG@", 
+            "📊 Consulta do Regulamento"
+        ])
         
         with tab_eval:
             df_pendentes = carregar_solicitacoes_pendentes()
@@ -560,10 +564,19 @@ else:
                 st.success("🎉 Nenhuma solicitação pendente para avaliação no momento.")
             else:
                 st.subheader("Solicitações Aguardando Avaliação")
-                st.dataframe(
-                    df_pendentes[["id", "nome_aluno", "cpf", "dimensao", "tipo_atividade", "titulo", "ch_solicitada", "comprovativo_nome", "data_solicitacao"]], 
-                    use_container_width=True
-                )
+                
+                df_pendentes_exibicao = df_pendentes[["id", "nome_aluno", "cpf", "dimensao", "tipo_atividade", "titulo", "ch_solicitada", "comprovativo_nome", "data_solicitacao"]].rename(columns={
+                    "id": "ID",
+                    "nome_aluno": "Nome do Aluno",
+                    "cpf": "CPF",
+                    "dimensao": "Eixo / Dimensão",
+                    "tipo_atividade": "Tipo de Atividade",
+                    "titulo": "Título / Descrição",
+                    "ch_solicitada": "CH Solicitada (h)",
+                    "comprovativo_nome": "Nome do Comprovante",
+                    "data_solicitacao": "Data da Solicitação"
+                })
+                st.dataframe(df_pendentes_exibicao, use_container_width=True, hide_index=True)
                 
                 st.markdown("---")
                 id_sel = st.number_input("Informe o ID do Processo para Avaliar:", min_value=1, step=1)
@@ -573,7 +586,7 @@ else:
                     dados = solic.iloc[0]
                     st.markdown(f"### Avaliando Processo #{dados['id']} — Aluno: **{dados['nome_aluno']}**")
                     st.write(f"**CPF:** {dados['cpf']} | **E-mail:** {dados['email']}")
-                    st.write(f"**Eixo:** {dados['dimensao']} | **Atividade:** {dados['tipo_atividade']}")
+                    st.write(f"**Eixo / Dimensão:** {dados['dimensao']} | **Tipo de Atividade:** {dados['tipo_atividade']}")
                     st.write(f"**Título:** {dados['titulo']} | **CH Solicitada pelo Aluno:** {dados['ch_solicitada']}h")
                     
                     conn = get_connection()
@@ -707,9 +720,66 @@ else:
                                 st.success(f"✅ Processo #{id_sel} avaliado como '{status_final}' com sucesso!")
                                 st.rerun()
 
+        with tab_historico_siga_doc:
+            st.subheader("🔍 Consultar Registros Confirmados no SIG@")
+            st.caption("Informe o CPF do discente para consultar o histórico individual de horas integradas no sistema oficial.")
+            
+            cpf_busca_doc = st.text_input("Digite o CPF do Aluno (apenas números, ou deixe em branco para ver todos):", key="input_busca_cpf_docente").strip()
+            
+            conn = get_connection()
+            if cpf_busca_doc:
+                cpf_limpo_busca_doc = cpf_busca_doc.zfill(11)
+                query_siga = """
+                    SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_aprovada, status, data_solicitacao 
+                    FROM solicitacoes 
+                    WHERE (registado_siga = 'Sim' OR status IN ('Lançado no SIG@', 'Concluído')) AND cpf LIKE ?
+                    ORDER BY id DESC
+                """
+                df_siga = pd.read_sql_query(query_siga, conn, params=(f"%{cpf_limpo_busca_doc}%",))
+            else:
+                query_siga = """
+                    SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_aprovada, status, data_solicitacao 
+                    FROM solicitacoes 
+                    WHERE (registado_siga = 'Sim' OR status IN ('Lançado no SIG@', 'Concluído'))
+                    ORDER BY id DESC
+                """
+                df_siga = pd.read_sql_query(query_siga, conn)
+            conn.close()
+            
+            if df_siga.empty:
+                if cpf_busca_doc:
+                    st.warning(f"Nenhum registro confirmado no SIG@ foi encontrado para o CPF informado (`{cpf_busca_doc}`).")
+                else:
+                    st.info("Nenhum registro foi confirmado no SIG@ até o momento.")
+            else:
+                if cpf_busca_doc and not df_siga.empty:
+                    nome_aluno_encontrado = df_siga.iloc[0]["nome_aluno"]
+                    total_ch_siga = df_siga["ch_aprovada"].sum()
+                    st.success(f"👤 **Aluno:** {nome_aluno_encontrado} | 🎯 **Total de Horas Confirmadas no SIG@:** {total_ch_siga:.1f} horas")
+                
+                df_siga_exibicao = df_siga.rename(columns={
+                    "id": "ID",
+                    "nome_aluno": "Nome do Aluno",
+                    "cpf": "CPF",
+                    "dimensao": "Eixo / Dimensão",
+                    "tipo_atividade": "Tipo de Atividade",
+                    "titulo": "Título / Descrição",
+                    "ch_aprovada": "CH Confirmada no SIG@ (h)",
+                    "status": "Status do Lançamento",
+                    "data_solicitacao": "Data da Solicitação"
+                })
+                st.dataframe(df_siga_exibicao, use_container_width=True, hide_index=True)
+
         with tab_ref:
             st.subheader("📋 Tabela de Consulta de Parâmetros e Tetos")
             df_quadro = carregar_parametros()
+            df_quadro.columns = [
+                "Tipo de Atividade / Modalidade", 
+                "Eixo / Dimensão", 
+                "Carga Horária por Item (Teto Unitário)", 
+                "Carga Horária Máxima Total (Teto Geral)", 
+                "Documento Comprobatório Exigido"
+            ]
             st.dataframe(df_quadro, use_container_width=True, hide_index=True)
 
     # =========================================================================
@@ -718,42 +788,110 @@ else:
     elif perfil == "Técnico Administrativo":
         st.header("⚙️ Painel do Técnico Administrativo")
         
-        df_avaliados = carregar_solicitacoes_avaliadas()
+        tab_pendentes_siga, tab_historico_siga = st.tabs([
+            "📋 Processos Pendentes de Lançamento",
+            "🔍 Consultar Horas Confirmadas no SIG@"
+        ])
         
-        if df_avaliados.empty:
-            st.info("Nenhum processo aprovado pendente de lançamento no sistema acadêmico (SIG@).")
-        else:
-            st.subheader("Processos Aprovados Prontos para Registro no SIG@ (Solicitações negadas foram arquivadas)")
-            st.dataframe(df_avaliados, use_container_width=True)
+        with tab_pendentes_siga:
+            df_avaliados = carregar_solicitacoes_avaliadas()
             
-            st.markdown("---")
-            st.subheader("Confirmar Lançamento no SIG@")
-            
-            with st.form("form_siga_tecnico"):
-                id_processo = st.number_input("Informe o ID da Solicitação para Concluir:", min_value=1, step=1)
-                confirmar_siga = st.checkbox("Confirmar lançamento efetuado no sistema oficial (SIG@)")
+            if df_avaliados.empty:
+                st.info("Nenhum processo aprovado pendente de lançamento no sistema acadêmico (SIG@).")
+            else:
+                st.subheader("Processos Aprovados Prontos para Registro no SIG@ (Solicitações negadas foram arquivadas)")
                 
-                btn_concluir = st.form_submit_button("Confirmar Conclusão do Processo")
+                df_avaliados_exibicao = df_avaliados.rename(columns={
+                    "id": "ID",
+                    "nome_aluno": "Nome do Aluno",
+                    "cpf": "CPF",
+                    "dimensao": "Eixo / Dimensão",
+                    "tipo_atividade": "Tipo de Atividade",
+                    "ch_aprovada": "CH Aprovada (h)",
+                    "status": "Parecer do Avaliador",
+                    "registado_siga": "Registrado no SIG@",
+                    "data_solicitacao": "Data da Solicitação"
+                })
+                st.dataframe(df_avaliados_exibicao, use_container_width=True, hide_index=True)
                 
-                if btn_concluir:
-                    if not confirmar_siga:
-                        st.warning("Marque a caixa de confirmação de lançamento no SIG@ antes de finalizar.")
-                    else:
-                        conn = get_connection()
-                        c = conn.cursor()
-                        c.execute("""
-                            UPDATE solicitacoes 
-                            SET registado_siga = 'Sim', status = 'Lançado no SIG@'
-                            WHERE id = ? AND status IN ('Aprovado', 'Aprovado Parcialmente')
-                        """, (id_processo,))
-                        linhas_afetadas = c.rowcount
-                        conn.commit()
-                        conn.close()
-                        
-                        if linhas_afetadas > 0:
-                            st.success(f"✅ **Processo #{id_processo} finalizado com sucesso!** Status atualizado para 'Lançado no SIG@'.")
-                            st.rerun()
+                st.markdown("---")
+                st.subheader("Confirmar Lançamento no SIG@")
+                
+                with st.form("form_siga_tecnico"):
+                    id_processo = st.number_input("Informe o ID da Solicitação para Concluir:", min_value=1, step=1)
+                    confirmar_siga = st.checkbox("Confirmar lançamento efetuado no sistema oficial (SIG@)")
+                    
+                    btn_concluir = st.form_submit_button("Confirmar Conclusão do Processo")
+                    
+                    if btn_concluir:
+                        if not confirmar_siga:
+                            st.warning("Marque a caixa de confirmação de lançamento no SIG@ antes de finalizar.")
                         else:
-                            st.error(f"Solicitação #{id_processo} não encontrada ou não está pendente de lançamento.")
+                            conn = get_connection()
+                            c = conn.cursor()
+                            c.execute("""
+                                UPDATE solicitacoes 
+                                SET registado_siga = 'Sim', status = 'Lançado no SIG@'
+                                WHERE id = ? AND status IN ('Aprovado', 'Aprovado Parcialmente')
+                            """, (id_processo,))
+                            linhas_afetadas = c.rowcount
+                            conn.commit()
+                            conn.close()
+                            
+                            if linhas_afetadas > 0:
+                                st.success(f"✅ **Processo #{id_processo} finalizado com sucesso!** Status atualizado para 'Lançado no SIG@'.")
+                                st.rerun()
+                            else:
+                                st.error(f"Solicitação #{id_processo} não encontrada ou não está pendente de lançamento.")
+
+        with tab_historico_siga:
+            st.subheader("🔍 Consultar Registros Confirmados no SIG@")
+            st.caption("Informe o CPF do discente para consultar o histórico individual de horas integradas no sistema oficial.")
+            
+            cpf_busca = st.text_input("Digite o CPF do Aluno (apenas números, ou deixe em branco para ver todos):", key="input_busca_cpf_tecnico").strip()
+            
+            conn = get_connection()
+            if cpf_busca:
+                cpf_limpo_busca = cpf_busca.zfill(11)
+                query_siga = """
+                    SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_aprovada, status, data_solicitacao 
+                    FROM solicitacoes 
+                    WHERE (registado_siga = 'Sim' OR status IN ('Lançado no SIG@', 'Concluído')) AND cpf LIKE ?
+                    ORDER BY id DESC
+                """
+                df_siga = pd.read_sql_query(query_siga, conn, params=(f"%{cpf_limpo_busca}%",))
+            else:
+                query_siga = """
+                    SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_aprovada, status, data_solicitacao 
+                    FROM solicitacoes 
+                    WHERE (registado_siga = 'Sim' OR status IN ('Lançado no SIG@', 'Concluído'))
+                    ORDER BY id DESC
+                """
+                df_siga = pd.read_sql_query(query_siga, conn)
+            conn.close()
+            
+            if df_siga.empty:
+                if cpf_busca:
+                    st.warning(f"Nenhum registro confirmado no SIG@ foi encontrado para o CPF informado (`{cpf_busca}`).")
+                else:
+                    st.info("Nenhum registro foi confirmado no SIG@ até o momento.")
+            else:
+                if cpf_busca and not df_siga.empty:
+                    nome_aluno_encontrado = df_siga.iloc[0]["nome_aluno"]
+                    total_ch_siga = df_siga["ch_aprovada"].sum()
+                    st.success(f"👤 **Aluno:** {nome_aluno_encontrado} | 🎯 **Total de Horas Confirmadas no SIG@:** {total_ch_siga:.1f} horas")
+                
+                df_siga_exibicao = df_siga.rename(columns={
+                    "id": "ID",
+                    "nome_aluno": "Nome do Aluno",
+                    "cpf": "CPF",
+                    "dimensao": "Eixo / Dimensão",
+                    "tipo_atividade": "Tipo de Atividade",
+                    "titulo": "Título / Descrição",
+                    "ch_aprovada": "CH Confirmada no SIG@ (h)",
+                    "status": "Status do Lançamento",
+                    "data_solicitacao": "Data da Solicitação"
+                })
+                st.dataframe(df_siga_exibicao, use_container_width=True, hide_index=True)
     else:
         st.warning(f"⚠️ Perfil de usuário '{perfil}' não reconhecido. Por favor, faça logout e entre novamente.")
