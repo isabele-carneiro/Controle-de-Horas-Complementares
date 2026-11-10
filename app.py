@@ -222,6 +222,9 @@ if "logado" not in st.session_state:
     st.session_state["email"] = None
     st.session_state["perfil"] = None
 
+if "msg_sucesso_siga" not in st.session_state:
+    st.session_state["msg_sucesso_siga"] = None
+
 st.title("🎓 Sistema de Controle de Atividades Complementares (AC)")
 st.caption("Faculdade de Ciências da Administração de Pernambuco - FCAP/UPE")
 
@@ -788,6 +791,12 @@ else:
     elif perfil == "Técnico Administrativo":
         st.header("⚙️ Painel do Técnico Administrativo")
         
+        # Exibe mensagem de sucesso vinda de st.session_state (permanece visível após st.rerun)
+        if st.session_state.get("msg_sucesso_siga"):
+            st.success(st.session_state["msg_sucesso_siga"])
+            st.balloons()
+            st.session_state["msg_sucesso_siga"] = None
+
         tab_pendentes_siga, tab_historico_siga = st.tabs([
             "📋 Processos Pendentes de Lançamento",
             "🔍 Consultar Horas Confirmadas no SIG@"
@@ -821,11 +830,11 @@ else:
                     id_processo = st.number_input("Informe o ID da Solicitação para Concluir:", min_value=1, step=1)
                     confirmar_siga = st.checkbox("Confirmar lançamento efetuado no sistema oficial (SIG@)")
                     
-                    btn_concluir = st.form_submit_button("Confirmar Conclusão do Processo")
+                    btn_concluir = st.form_submit_button("🚀 Confirmar Lançamento no SIG@")
                     
                     if btn_concluir:
                         if not confirmar_siga:
-                            st.warning("Marque a caixa de confirmação de lançamento no SIG@ antes de finalizar.")
+                            st.warning("⚠️ Marque a caixa de confirmação de lançamento no SIG@ antes de finalizar.")
                         else:
                             conn = get_connection()
                             c = conn.cursor()
@@ -839,7 +848,7 @@ else:
                             conn.close()
                             
                             if linhas_afetadas > 0:
-                                st.success(f"✅ **Processo #{id_processo} finalizado com sucesso!** Status atualizado para 'Lançado no SIG@'.")
+                                st.session_state["msg_sucesso_siga"] = f"🎉 **Sucesso! Processo #{id_processo} confirmado e lançado no SIG@ com sucesso!**"
                                 st.rerun()
                             else:
                                 st.error(f"Solicitação #{id_processo} não encontrada ou não está pendente de lançamento.")
