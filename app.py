@@ -161,7 +161,7 @@ def carregar_horas_acumuladas_por_eixo(cpf_aluno):
     query = """
         SELECT dimensao, SUM(ch_aprovada) as total_aprovado 
         FROM solicitacoes 
-        WHERE cpf = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Concluído') 
+        WHERE cpf = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Concluído', 'Lançado no SIG@') 
         GROUP BY dimensao
     """
     df = pd.read_sql(query, conn, params=(cpf_aluno,))
@@ -197,11 +197,15 @@ def carregar_solicitacoes_pendentes():
     return df
 
 def carregar_solicitacoes_avaliadas():
+    """
+    Carrega solicitações APROVADAS ou APROVADAS PARCIALMENTE que aguardam lançamento no SIG@.
+    Exclui solicitações Negadas/Indeferidas e solicitações já confirmadas no SIG@.
+    """
     conn = get_connection()
     query = """
         SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, ch_aprovada, status, registado_siga, data_solicitacao 
         FROM solicitacoes 
-        WHERE status IN ('Aprovado', 'Aprovado Parcialmente', 'Indeferido', 'Negado') 
+        WHERE status IN ('Aprovado', 'Aprovado Parcialmente') AND (registado_siga = 'Não' OR registado_siga IS NULL)
         ORDER BY id DESC
     """
     df = pd.read_sql_query(query, conn)
@@ -451,13 +455,41 @@ else:
             
             if not df_aluno.empty:
                 st.markdown("### 📄 Histórico de Solicitações Submetidas")
-                st.dataframe(df_aluno, use_container_width=True)
+                
+                # Mapeia o status do processo para visualização do estudante
+                df_exibicao = df_aluno.copy()
+                def mapear_status_discente(r):
+                    if r["registado_siga"] == "Sim" or r["status"] in ["Concluído", "Lançado no SIG@"]:
+                        return "Lançado no SIG@"
+                    elif r["status"] in ["Aprovado", "Aprovado Parcialmente"]:
+                        return "Pendente a ser lançada no SIG@"
+                    elif r["status"] == "Pendente":
+                        return "Pendente de Avaliação"
+                    else:
+                        return r["status"]
+                
+                df_exibicao["status_exibicao"] = df_exibicao.apply(mapear_status_discente, axis=1)
+                
+                cols_mostrar = ["id", "dimensao", "tipo_atividade", "titulo", "ch_solicitada", "ch_aprovada", "status_exibicao", "justificativa", "data_solicitacao"]
+                df_mostrar = df_exibicao[cols_mostrar].rename(columns={
+                    "id": "ID",
+                    "dimensao": "Eixo",
+                    "tipo_atividade": "Tipo de Atividade",
+                    "titulo": "Título / Descrição",
+                    "ch_solicitada": "CH Solicitada",
+                    "ch_aprovada": "CH Aprovada",
+                    "status_exibicao": "Status do Processo",
+                    "justificativa": "Parecer / Justificativa",
+                    "data_solicitacao": "Data da Solicitação"
+                })
+                
+                st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
                 
                 st.markdown("---")
                 st.markdown("### 📊 Balanço e Validação de Requisitos por Eixo")
                 st.caption("📌 Regulamento: O estudante deve acumular horas em pelo menos 2 eixos diferentes, computando no máximo 100 horas por eixo.")
                 
-                df_aprovadas = df_aluno[df_aluno["status"].isin(["Aprovado", "Aprovado Parcialmente", "Concluído"])]
+                df_aprovadas = df_aluno[df_aluno["status"].isin(["Aprovado", "Aprovado Parcialmente", "Concluído", "Lançado no SIG@"])]
                 
                 eixos_cadastrados = ["Ensino", "Pesquisa", "Extensão", "Gestão"]
                 resumo_eixos = []
@@ -549,7 +581,7 @@ else:
                     
                     c.execute("""
                         SELECT SUM(ch_aprovada) FROM solicitacoes 
-                        WHERE cpf = ? AND dimensao = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Concluído') AND id != ?
+                        WHERE cpf = ? AND dimensao = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Concluído', 'Lançado no SIG@') AND id != ?
                     """, (dados['cpf'], dados['dimensao'], id_sel))
                     res_eixo = c.fetchone()
                     saldo_eixo_aluno = res_eixo[0] if res_eixo and res_eixo[0] else 0.0
@@ -689,13 +721,13 @@ else:
         df_avaliados = carregar_solicitacoes_avaliadas()
         
         if df_avaliados.empty:
-            st.info("Nenhum processo avaliado pendente de lançamento no sistema acadêmico (SIG@).")
+            st.info("Nenhum processo aprovado pendente de lançamento no sistema acadêmico (SIG@).")
         else:
-            st.subheader("Processos Avaliados Prontos para Registro no SIG@")
+            st.subheader("Processos Aprovados Prontos para Registro no SIG@ (Solicitações negadas foram arquivadas)")
             st.dataframe(df_avaliados, use_container_width=True)
             
             st.markdown("---")
-            st.subheader("Confirmar Integração / Lançamento no SIG@")
+            st.subheader("Confirmar Lançamento no SIG@")
             
             with st.form("form_siga_tecnico"):
                 id_processo = st.number_input("Informe o ID da Solicitação para Concluir:", min_value=1, step=1)
@@ -711,17 +743,17 @@ else:
                         c = conn.cursor()
                         c.execute("""
                             UPDATE solicitacoes 
-                            SET registado_siga = 'Sim', status = 'Concluído'
-                            WHERE id = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Indeferido', 'Negado')
+                            SET registado_siga = 'Sim', status = 'Lançado no SIG@'
+                            WHERE id = ? AND status IN ('Aprovado', 'Aprovado Parcialmente')
                         """, (id_processo,))
                         linhas_afetadas = c.rowcount
                         conn.commit()
                         conn.close()
                         
                         if linhas_afetadas > 0:
-                            st.success(f"✅ **Processo #{id_processo} finalizado com sucesso!** Status atualizado para 'Concluído'.")
+                            st.success(f"✅ **Processo #{id_processo} finalizado com sucesso!** Status atualizado para 'Lançado no SIG@'.")
                             st.rerun()
                         else:
-                            st.error(f"Solicitação #{id_processo} não encontrada ou ainda não avaliada por um docente.")
+                            st.error(f"Solicitação #{id_processo} não encontrada ou não está pendente de lançamento.")
     else:
         st.warning(f"⚠️ Perfil de usuário '{perfil}' não reconhecido. Por favor, faça logout e entre novamente.")
