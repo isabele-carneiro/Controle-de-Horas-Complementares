@@ -91,8 +91,24 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# URL para o Logotipo Oficial da UPE
-URL_LOGO_UPE = "https://upload.wikimedia.org/wikipedia/commons/4/4b/Logo_UPE.png"
+# Configuração do Logo (Procura o arquivo local "logo_upe.png")
+CAMINHO_LOGO_LOCAL = "logo_upe.png"
+URL_LOGO_REMOTO = "https://upload.wikimedia.org/wikipedia/commons/4/4b/Logo_UPE.png"
+
+def exibir_logo_upe(largura=130):
+    """Renderiza o logotipo com segurança: local > remoto > fallback estilizado em HTML."""
+    if os.path.exists(CAMINHO_LOGO_LOCAL):
+        st.image(CAMINHO_LOGO_LOCAL, width=largura)
+    else:
+        try:
+            st.image(URL_LOGO_REMOTO, width=largura)
+        except Exception:
+            st.markdown(f"""
+                <div style="background-color: #002B49; color: white; font-weight: bold; 
+                            padding: 12px; border-radius: 8px; text-align: center; width: {largura}px; margin-bottom: 10px;">
+                    🎓 UPE FCAP
+                </div>
+            """, unsafe_allow_html=True)
 
 # =============================================================================
 # BANCO DE DADOS - CONEXÃO E INICIALIZAÇÃO
@@ -307,10 +323,7 @@ if "msg_sucesso_siga" not in st.session_state:
 # Cabeçalho Principal da Aplicação
 col_header_logo, col_header_title = st.columns([1, 5])
 with col_header_logo:
-    try:
-        st.image(URL_LOGO_UPE, width=130)
-    except Exception:
-        st.markdown("### 🎓 **UPE**")
+    exibir_logo_upe(largura=120)
 
 with col_header_title:
     st.title("Sistema de Controle de Atividades Complementares (AC)")
@@ -324,10 +337,7 @@ if not st.session_state["logado"]:
     
     with col_login_esq:
         st.markdown("### 🏛️ Universidade de Pernambuco")
-        try:
-            st.image(URL_LOGO_UPE, width=180)
-        except Exception:
-            st.info("🎓 FCAP / UPE")
+        exibir_logo_upe(largura=170)
         st.markdown("""
         **FCAP / UPE**  
         *Faculdade de Ciências da Administração de Pernambuco*  
@@ -443,23 +453,20 @@ if not st.session_state["logado"]:
 # =============================================================================
 else:
     # Sidebar com Logotipo e Informações do Usuário
-    try:
-        st.sidebar.image(URL_LOGO_UPE, width=120)
-    except Exception:
-        st.sidebar.markdown("### 🎓 **UPE / FCAP**")
+    with st.sidebar:
+        exibir_logo_upe(largura=110)
+        st.markdown(f"👤 **Usuário:** {st.session_state['nome']}")
+        st.markdown(f"🆔 **CPF:** {st.session_state['cpf']}")
+        st.markdown(f"🛡️ **Perfil:** {st.session_state['perfil']}")
+        st.markdown("---")
         
-    st.sidebar.markdown(f"👤 **Usuário:** {st.session_state['nome']}")
-    st.sidebar.markdown(f"🆔 **CPF:** {st.session_state['cpf']}")
-    st.sidebar.markdown(f"🛡️ **Perfil:** {st.session_state['perfil']}")
-    st.sidebar.markdown("---")
-    
-    if st.sidebar.button("🚪 Encerrar Sessão / Sair"):
-        st.session_state["logado"] = False
-        st.session_state["cpf"] = None
-        st.session_state["nome"] = None
-        st.session_state["email"] = None
-        st.session_state["perfil"] = None
-        st.rerun()
+        if st.button("🚪 Encerrar Sessão / Sair"):
+            st.session_state["logado"] = False
+            st.session_state["cpf"] = None
+            st.session_state["nome"] = None
+            st.session_state["email"] = None
+            st.session_state["perfil"] = None
+            st.rerun()
 
     perfil = st.session_state.get("perfil", "").strip()
 
@@ -706,3 +713,313 @@ else:
                     
                     conn = get_connection()
                     c = conn.cursor()
+                    
+                    c.execute("""
+                        SELECT SUM(ch_aprovada) FROM solicitacoes 
+                        WHERE cpf = ? AND dimensao = ? AND status IN ('Aprovado', 'Aprovado Parcialmente', 'Concluído', 'Lançado no SIG@') AND id != ?
+                    """, (dados['cpf'], dados['dimensao'], id_sel))
+                    res_eixo = c.fetchone()
+                    saldo_eixo_aluno = res_eixo[0] if res_eixo and res_eixo[0] else 0.0
+                    
+                    c.execute("SELECT comprovativo_nome, comprovativo_blob FROM solicitacoes WHERE id = ?", (id_sel,))
+                    blob_row = c.fetchone()
+                    
+                    c.execute("SELECT ch_por_atividade, ch_maxima_total FROM parametros WHERE tipo_atividade = ?", (dados['tipo_atividade'],))
+                    res_param = c.fetchone()
+                    conn.close()
+                    
+                    st.markdown("### 📄 Documentação Comprobatória para Análise")
+                    
+                    # 1. LINK EXTERNO
+                    if dados['link_comprovativo']:
+                        link_url = dados['link_comprovativo']
+                        st.markdown(
+                            f'<a href="{link_url}" target="_blank" style="text-decoration: none;">'
+                            f'<button style="background-color: #002B49; color: #FFFFFF; border: 1px solid #002B49; '
+                            f'padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px;">'
+                            f'🔗 Abrir Link Comprovativo em Nova Guia ↗'
+                            f'</button></a>',
+                            unsafe_allow_html=True
+                        )
+                    
+                    # 2. ARQUIVO PDF
+                    if blob_row and blob_row[1]:
+                        pdf_bytes = blob_row[1]
+                        nome_pdf = blob_row[0] if blob_row[0] else f"comprovante_{id_sel}.pdf"
+                        base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                        
+                        st.markdown(f"**Arquivo Anexado:** `{nome_pdf}`")
+                        
+                        pdf_href = f"data:application/pdf;base64,{base64_pdf}"
+                        st.markdown(
+                            f'<a href="{pdf_href}" target="_blank" style="text-decoration: none;">'
+                            f'<button style="background-color: #002B49; color: #FFFFFF; border: 1px solid #002B49; '
+                            f'padding: 10px 18px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px;">'
+                            f'📄 Abrir Documento PDF em Nova Guia ↗'
+                            f'</button></a>',
+                            unsafe_allow_html=True
+                        )
+                            
+                    elif not dados['link_comprovativo']:
+                        st.warning("⚠️ Nenhum arquivo ou link de comprovante foi anexado a este processo.")
+                    
+                    st.markdown("---")
+                    
+                    teto_item = float(res_param[1]) if res_param else 20.0
+                    teto_unitario_desc = res_param[0] if res_param else "N/A"
+                    
+                    st.info(f"""
+                    ℹ️ **Regras para Validação do Item:**
+                    * **Limite por Atividade/Unitário:** `{teto_unitario_desc}`
+                    * **Teto Máximo do Item:** `{teto_item} horas`
+                    * **Saldo do Aluno no Eixo {dados['dimensao']}:** `{saldo_eixo_aluno:.1f} / 100.0 horas`
+                    """)
+                    
+                    if saldo_eixo_aluno >= 100.0:
+                        st.warning(f"⚠️ **Aviso:** O aluno já atingiu **{saldo_eixo_aluno:.1f}h** no eixo **{dados['dimensao']}**. O regulamento aproveita no máximo **100 horas por eixo**.")
+
+                    with st.form("form_avaliacao_docente"):
+                        decisao = st.radio(
+                            "Parecer do Avaliador:", 
+                            ["Aprovado", "Aprovado Parcialmente", "Negado"],
+                            help="Selecione 'Aprovado Parcialmente' ou 'Negado' caso o valor seja reduzido por limites ou não atenda aos requisitos."
+                        )
+                        
+                        if decisao == "Aprovado":
+                            ch_sugerida = min(float(dados['ch_solicitada']), teto_item)
+                            ch_informada = st.number_input(
+                                "Carga Horária Aprovada (CH):", 
+                                min_value=0.0, 
+                                max_value=float(dados['ch_solicitada']), 
+                                value=float(ch_sugerida),
+                                step=1.0
+                            )
+                            justificativa = st.text_area("Justificativa / Observações (Opcional):")
+                        elif decisao == "Aprovado Parcialmente":
+                            ch_informada = st.number_input(
+                                "Carga Horária Aprovada Parcialmente (CH):", 
+                                min_value=0.1, 
+                                max_value=float(dados['ch_solicitada']), 
+                                value=float(min(float(dados['ch_solicitada']), teto_item)),
+                                step=1.0
+                            )
+                            justificativa = st.text_area("Justificativa Obrigatória (Informe o motivo pelo qual o total não foi aprovado, ex: aplicação de limites do regulamento):")
+                        else:  # Negado
+                            ch_informada = 0.0
+                            st.info("Carga Horária Aprovada definida como **0.0 horas**.")
+                            justificativa = st.text_area("Justificativa Obrigatória para Indeferimento/Negativa:")
+                        
+                        btn_salvar_eval = st.form_submit_button("💾 Gravar Avaliação no Sistema")
+                        
+                        if btn_salvar_eval:
+                            if decisao in ["Aprovado Parcialmente", "Negado"] and not justificativa.strip():
+                                st.error("🚫 **Gravação Bloqueada:** A justificativa é **obrigatória** para os pareceres 'Aprovado Parcialmente' e 'Negado'!")
+                            else:
+                                ch_final = ch_informada
+                                ch_max_atingida = "Não"
+                                status_final = decisao
+                                
+                                if decisao == "Aprovado":
+                                    if ch_informada >= teto_item or dados['ch_solicitada'] >= teto_item:
+                                        ch_final = min(ch_informada, teto_item)
+                                        ch_max_atingida = "Sim"
+                                        st.warning(f"⚠️ **Teto Aplicado:** A carga horária foi ajustada para o limite máximo de {teto_item}h da atividade.")
+                                elif decisao == "Aprovado Parcialmente":
+                                    if ch_informada >= teto_item:
+                                        ch_max_atingida = "Sim"
+                                elif decisao == "Negado":
+                                    ch_final = 0.0
+                                
+                                conn = get_connection()
+                                c = conn.cursor()
+                                c.execute("""
+                                    UPDATE solicitacoes 
+                                    SET ch_aprovada = ?, ch_maxima_atingida = ?, status = ?, nome_avaliador = ?, justificativa = ?
+                                    WHERE id = ?
+                                """, (ch_final, ch_max_atingida, status_final, st.session_state["nome"], justificativa, id_sel))
+                                conn.commit()
+                                conn.close()
+                                st.success(f"✅ Processo #{id_sel} avaliado como '{status_final}' com sucesso!")
+                                st.rerun()
+
+        with tab_historico_siga_doc:
+            st.subheader("🔍 Consultar Registros Confirmados no SIG@")
+            st.caption("Informe o CPF do discente para consultar o histórico individual de horas integradas no sistema oficial.")
+            
+            cpf_busca_doc = st.text_input("Digite o CPF do Aluno (apenas números, ou deixe em branco para ver todos):", key="input_busca_cpf_docente").strip()
+            
+            conn = get_connection()
+            if cpf_busca_doc:
+                cpf_limpo_busca_doc = cpf_busca_doc.zfill(11)
+                query_siga = """
+                    SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_aprovada, status, data_solicitacao 
+                    FROM solicitacoes 
+                    WHERE (registado_siga = 'Sim' OR status IN ('Lançado no SIG@', 'Concluído')) AND cpf LIKE ?
+                    ORDER BY id DESC
+                """
+                df_siga = pd.read_sql_query(query_siga, conn, params=(f"%{cpf_limpo_busca_doc}%",))
+            else:
+                query_siga = """
+                    SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_aprovada, status, data_solicitacao 
+                    FROM solicitacoes 
+                    WHERE (registado_siga = 'Sim' OR status IN ('Lançado no SIG@', 'Concluído'))
+                    ORDER BY id DESC
+                """
+                df_siga = pd.read_sql_query(query_siga, conn)
+            conn.close()
+            
+            if df_siga.empty:
+                if cpf_busca_doc:
+                    st.warning(f"Nenhum registro confirmado no SIG@ foi encontrado para o CPF informado (`{cpf_busca_doc}`).")
+                else:
+                    st.info("Nenhum registro foi confirmado no SIG@ até o momento.")
+            else:
+                if cpf_busca_doc and not df_siga.empty:
+                    nome_aluno_encontrado = df_siga.iloc[0]["nome_aluno"]
+                    total_ch_siga = df_siga["ch_aprovada"].sum()
+                    st.success(f"👤 **Aluno:** {nome_aluno_encontrado} | 🎯 **Total de Horas Confirmadas no SIG@:** {total_ch_siga:.1f} horas")
+                
+                df_siga_exibicao = df_siga.rename(columns={
+                    "id": "ID",
+                    "nome_aluno": "Nome do Aluno",
+                    "cpf": "CPF",
+                    "dimensao": "Eixo / Dimensão",
+                    "tipo_atividade": "Tipo de Atividade",
+                    "titulo": "Título / Descrição",
+                    "ch_aprovada": "CH Confirmada no SIG@ (h)",
+                    "status": "Status do Lançamento",
+                    "data_solicitacao": "Data da Solicitação"
+                })
+                st.dataframe(df_siga_exibicao, use_container_width=True, hide_index=True)
+
+        with tab_ref:
+            st.subheader("📋 Tabela de Consulta de Parâmetros e Tetos")
+            df_quadro = carregar_parametros()
+            df_quadro.columns = [
+                "Tipo de Atividade / Modalidade", 
+                "Eixo / Dimensão", 
+                "Carga Horária por Item (Teto Unitário)", 
+                "Carga Horária Máxima Total (Teto Geral)", 
+                "Documento Comprobatório Exigido"
+            ]
+            st.dataframe(df_quadro, use_container_width=True, hide_index=True)
+
+    # =========================================================================
+    # 3. PAINEL DO TÉCNICO ADMINISTRATIVO
+    # =========================================================================
+    elif perfil == "Técnico Administrativo":
+        st.header("⚙️ Painel do Técnico Administrativo")
+        
+        # Exibe mensagem de sucesso vinda de st.session_state (permanece visível após st.rerun)
+        if st.session_state.get("msg_sucesso_siga"):
+            st.success(st.session_state["msg_sucesso_siga"])
+            st.balloons()
+            st.session_state["msg_sucesso_siga"] = None
+
+        tab_pendentes_siga, tab_historico_siga = st.tabs([
+            "📋 Processos Pendentes de Lançamento",
+            "🔍 Consultar Horas Confirmadas no SIG@"
+        ])
+        
+        with tab_pendentes_siga:
+            df_avaliados = carregar_solicitacoes_avaliadas()
+            
+            if df_avaliados.empty:
+                st.info("Nenhum processo aprovado pendente de lançamento no sistema acadêmico (SIG@).")
+            else:
+                st.subheader("Processos Aprovados Prontos para Registro no SIG@ (Solicitações negadas foram arquivadas)")
+                
+                df_avaliados_exibicao = df_avaliados.rename(columns={
+                    "id": "ID",
+                    "nome_aluno": "Nome do Aluno",
+                    "cpf": "CPF",
+                    "dimensao": "Eixo / Dimensão",
+                    "tipo_atividade": "Tipo de Atividade",
+                    "ch_aprovada": "CH Aprovada (h)",
+                    "status": "Parecer do Avaliador",
+                    "registado_siga": "Registrado no SIG@",
+                    "data_solicitacao": "Data da Solicitação"
+                })
+                st.dataframe(df_avaliados_exibicao, use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                st.subheader("Confirmar Lançamento no SIG@")
+                
+                with st.form("form_siga_tecnico"):
+                    id_processo = st.number_input("Informe o ID da Solicitação para Concluir:", min_value=1, step=1)
+                    confirmar_siga = st.checkbox("Confirmar lançamento efetuado no sistema oficial (SIG@)")
+                    
+                    btn_concluir = st.form_submit_button("🚀 Confirmar Lançamento no SIG@")
+                    
+                    if btn_concluir:
+                        if not confirmar_siga:
+                            st.warning("⚠️ Marque a caixa de confirmação de lançamento no SIG@ antes de finalizar.")
+                        else:
+                            conn = get_connection()
+                            c = conn.cursor()
+                            c.execute("""
+                                UPDATE solicitacoes 
+                                SET registado_siga = 'Sim', status = 'Lançado no SIG@'
+                                WHERE id = ? AND status IN ('Aprovado', 'Aprovado Parcialmente')
+                            """, (id_processo,))
+                            linhas_afetadas = c.rowcount
+                            conn.commit()
+                            conn.close()
+                            
+                            if linhas_afetadas > 0:
+                                st.session_state["msg_sucesso_siga"] = f"🎉 **Sucesso! Processo #{id_processo} confirmado e lançado no SIG@ com sucesso!**"
+                                st.rerun()
+                            else:
+                                st.error(f"Solicitação #{id_processo} não encontrada ou não está pendente de lançamento.")
+
+        with tab_historico_siga:
+            st.subheader("🔍 Consultar Registros Confirmados no SIG@")
+            st.caption("Informe o CPF do discente para consultar o histórico individual de horas integradas no sistema oficial.")
+            
+            cpf_busca = st.text_input("Digite o CPF do Aluno (apenas números, ou deixe em branco para ver todos):", key="input_busca_cpf_tecnico").strip()
+            
+            conn = get_connection()
+            if cpf_busca:
+                cpf_limpo_busca = cpf_busca.zfill(11)
+                query_siga = """
+                    SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_aprovada, status, data_solicitacao 
+                    FROM solicitacoes 
+                    WHERE (registado_siga = 'Sim' OR status IN ('Lançado no SIG@', 'Concluído')) AND cpf LIKE ?
+                    ORDER BY id DESC
+                """
+                df_siga = pd.read_sql_query(query_siga, conn, params=(f"%{cpf_limpo_busca}%",))
+            else:
+                query_siga = """
+                    SELECT id, nome_aluno, cpf, dimensao, tipo_atividade, titulo, ch_aprovada, status, data_solicitacao 
+                    FROM solicitacoes 
+                    WHERE (registado_siga = 'Sim' OR status IN ('Lançado no SIG@', 'Concluído'))
+                    ORDER BY id DESC
+                """
+                df_siga = pd.read_sql_query(query_siga, conn)
+            conn.close()
+            
+            if df_siga.empty:
+                if cpf_busca:
+                    st.warning(f"Nenhum registro confirmado no SIG@ foi encontrado para o CPF informado (`{cpf_busca}`).")
+                else:
+                    st.info("Nenhum registro foi confirmado no SIG@ até o momento.")
+            else:
+                if cpf_busca and not df_siga.empty:
+                    nome_aluno_encontrado = df_siga.iloc[0]["nome_aluno"]
+                    total_ch_siga = df_siga["ch_aprovada"].sum()
+                    st.success(f"👤 **Aluno:** {nome_aluno_encontrado} | 🎯 **Total de Horas Confirmadas no SIG@:** {total_ch_siga:.1f} horas")
+                
+                df_siga_exibicao = df_siga.rename(columns={
+                    "id": "ID",
+                    "nome_aluno": "Nome do Aluno",
+                    "cpf": "CPF",
+                    "dimensao": "Eixo / Dimensão",
+                    "tipo_atividade": "Tipo de Atividade",
+                    "titulo": "Título / Descrição",
+                    "ch_aprovada": "CH Confirmada no SIG@ (h)",
+                    "status": "Status do Lançamento",
+                    "data_solicitacao": "Data da Solicitação"
+                })
+                st.dataframe(df_siga_exibicao, use_container_width=True, hide_index=True)
+    else:
+        st.warning(f"⚠️ Perfil de usuário '{perfil}' não reconhecido. Por favor, faça logout e entre novamente.")
