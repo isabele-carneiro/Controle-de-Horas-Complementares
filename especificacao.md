@@ -23,6 +23,13 @@ A coordenação e o corpo técnico analisam manualmente centenas de comprovativo
 
 ## 4. Requisitos Funcionais (EARS) e Critérios de Aceitação (Dado/Quando/Então)
 
+### RF-00: Autenticação e Controle de Perfil
+O sistema deve permitir que os usuários façam login com credenciais válidas e direcioná-los exclusivamente às funcionalidades permitidas ao respectivo perfil: Discente, Docente/Avaliador ou Técnico Administrativo. A especificação fornecida indica o CPF como possível identificador de usuário e a criação da senha no primeiro acesso.
+- **CA-00a**: Dado que o usuário insere login e senha válidos do perfil Discente, quando clica em “Entrar”, então o sistema valida a sessão e exibe apenas o painel do aluno.
+- **CA-00b**: Dado que o usuário insere login e senha válidos do perfil Docente, quando clica em “Entrar”, então o sistema valida a sessão e exibe apenas o painel de avaliação do docente.
+- **CA-00c**: Dado que o usuário insere login e senha válidos do perfil Técnico Administrativo, quando clica em “Entrar”, então o sistema valida a sessão e exibe apenas o painel do técnico administrativo.
+- **CA-00d**: Dado que o usuário insere uma senha incorreta, quando clica em “Entrar”, então o sistema exibe a mensagem “Credenciais inválidas” e impede o acesso.
+
 ### RF-01: Submissão de Solicitação de AC
 Quando o discente submeter o formulário de solicitação com a documentação associada, o sistema deve gravar a solicitação com o estado "Pendente".
 - **CA-01 (Sucesso)**: Dado que o discente preencheu a dimensão, o tipo, o título, a CH solicitada e uma ligação válida para o comprovativo, quando clica em "Submeter", então o sistema grava a solicitação com o estado "Pendente" e a data atual.
