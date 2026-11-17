@@ -4,7 +4,7 @@
 
 | ID Tarefa | Descrição da Tarefa | Requisito / Critério Relacionado | Estado |
 | :--- | :--- | :--- | :--- |
-| **T-00** | Permitir o login apenas com credenciais válidas. | Pré-requisito para RF-01 || Aprovado |
+| **T-00** | Permitir o login apenas com credenciais válidas. | Pré-requisito para RF-01 | Aprovado |
 | **T-01** | Criar a tabela de parâmetros com os limites de CH por atividade e dimensão. | Pré-requisito para RF-02 | Aprovado |
 | **T-02** | Desenvolver o formulário de submissão do discente com validações de campos obrigatórios. | RF-01, CA-01, CA-02 | Aprovado |
 | **T-03** | Implementar a lógica de cálculo automático dos tetos de carga horária e alertas de limite atingido. | RF-02, CA-03 | Aprovado |
